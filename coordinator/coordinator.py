@@ -22,6 +22,8 @@ import logging.handlers
 import ipaddress
 import json
 import threading
+import queue
+import time
 import lib.bmv2_thrift_lib as bmv2
 import lib.database_comms as db
 import lib.global_constants as cts
@@ -40,42 +42,60 @@ args = parser.parse_args()
 
 
 
-class SocketStreamHandler(logging.StreamHandler):
-    """Custom StreamHandler to send logs over TCP."""
+class SocketStreamHandler(logging.Handler):
     def __init__(self, host, port):
-        super().__init__(sys.stdout)  # StreamHandler needs an output stream
+        super().__init__()
         self.host = host
         self.port = port
         self.sock = None
-        self._connect()
-
-    def _connect(self):
-        """Establish connection to log server."""
-        try:
-            self.sock = socket.create_connection((self.host, self.port))
-        except Exception as e:
-            print(f"Failed to connect to log server: {e}")
-            self.sock = None
+        self.queue = queue.Queue()
+        self.running = True
+        self.thread = threading.Thread(target=self._send_worker, daemon=True)
+        self.thread.start()
+        print(f"[LogForwarder] Initialized with target {self.host}:{self.port}")
 
     def emit(self, record):
-        """Send log message to log server."""
-        if not self.sock:
-            self._connect()  # Try to reconnect if needed
-            if not self.sock:
-                return  # Drop log if connection fails
-
         try:
-            msg = self.format(record) + "\n"
-            self.sock.sendall(msg.encode('utf-8'))  # Send log as bytes
+            msg = self.format(record)
+            self.queue.put(msg)
         except Exception as e:
-            print(f"Error sending log: {e}")
-            self.sock = None  # Reset socket on failure
+            print(f"[LogForwarder] Emit error: {e}")
+
+    def _connect(self):
+        try:
+            self.sock = socket.create_connection((self.host, self.port))
+            print(f"[LogForwarder] Connected to log server at {self.host}:{self.port}")
+        except Exception as e:
+            print(f"[LogForwarder] Connection failed: {e}")
+            self.sock = None
+
+    def _send_worker(self):
+        while self.running:
+            try:
+                msg = self.queue.get(timeout=1)  # wait 1 second for a message
+                if self.sock is None:
+                    self._connect()
+                if self.sock:
+                    try:
+                        self.sock.sendall((msg + "\n").encode('utf-8'))
+                        print(f"[LogForwarder] Sent: {msg}")
+                    except Exception as e:
+                        print(f"[LogForwarder] Send failed: {e}")
+                        self.sock = None
+            except queue.Empty:
+                continue  # just loop again
+            except Exception as e:
+                print(f"[LogForwarder] Worker error: {e}")
 
     def close(self):
-        """Close the socket when done."""
+        self.running = False
         if self.sock:
-            self.sock.close()
+            try:
+                self.sock.close()
+            except:
+                pass
         super().close()
+
 
 loopback_if = 'lo:0'
 
@@ -95,7 +115,8 @@ logger = logging.getLogger(THIS_NODE_UUID)
 log_socket_handler = SocketStreamHandler( '127.0.0.1', cfg.logs_server_address[1] )
 log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
 log_socket_handler.setFormatter(log_info_formatter)
-log_socket_handler.setLevel(logging.INFO)
+log_socket_handler.setLevel(args.log_level)
+logger.addHandler(log_socket_handler)
 
 log_console_handler = logging.StreamHandler(sys.stdout)
 log_console_handler.setLevel(args.log_level)

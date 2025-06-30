@@ -15,7 +15,7 @@ str_NODE_IDS = 'nids'
 
 
 message = {'Type': str_NODE_JOIN_LIST,
-           str_NODE_IDS: ['SN010002', 'SN010003'] 
+           str_NODE_IDS: ['SN000002'] 
            }
 
 

@@ -8,7 +8,6 @@ sys.path.append('../..')
 import subprocess
 import logging
 import logging.handlers
-
 import threading
 import socket
 import atexit
@@ -25,10 +24,7 @@ import lib.global_constants as cts
 import lib.helper_functions as utils
 import json
 import concurrent.futures
-
-
 import lib.node_discovery as se_net
-
 from argparse import ArgumentParser
 
 
@@ -91,7 +87,7 @@ PROGRAM_LOG_FILE_NAME = './logs/ap.log'
 os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
 logger = logging.getLogger(f'{THIS_AP_UUID}')
 
-log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
+log_info_formatter =  logging.Formatter("[AP] %(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
 
 
 client_monitor_log_console_handler = logging.StreamHandler(sys.stdout)
