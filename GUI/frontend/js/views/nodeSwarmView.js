@@ -126,7 +126,7 @@ export function loadNodeSwarmView() {
         li.addEventListener("click", () => {
           document.querySelectorAll("#swarm-list li").forEach(el => el.classList.remove("selected"));
           li.classList.add("selected");
-
+          selectedSwarmTable = swarm.table;  
           fetch(`/swarms/${swarm.table}`)
             .then(res => res.json())
             .then(members => {
@@ -203,14 +203,14 @@ export function loadNodeSwarmView() {
 
   document.getElementById("ask-leave-btn").addEventListener("click", async () => {
     const leaveLog = document.getElementById("leave-log");
-  
+
     if (!selectedSwarmNodeUuid || !selectedSwarmTable) {
       leaveLog.textContent = "❌ Please select both a swarm and a node to leave.";
       return;
     }
-  
+
     leaveLog.textContent = `⏳ Sending leave request for ${selectedSwarmNodeUuid} from swarm "${selectedSwarmTable}"...`;
-  
+
     try {
       const response = await fetch("/request-leave", {
         method: "POST",
@@ -218,13 +218,12 @@ export function loadNodeSwarmView() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          Type: "nll",
-          nids: [formatColonUuid(selectedSwarmNodeUuid)]
+          nids: [selectedSwarmNodeUuid]  // ✅ Use raw UUID
         })
       });
-  
+
       const result = await response.json();
-  
+
       if (result.success) {
         leaveLog.textContent = result.output || "✅ Leave request sent.";
       } else {
@@ -234,16 +233,8 @@ export function loadNodeSwarmView() {
       leaveLog.textContent = "❌ Request failed: " + err.message;
     }
   });
+
   
 }
 
-function formatColonUuid(uuid) {
-  // Example: "SN000002" -> "SN:00:00:02"
-  if (!uuid.startsWith("SN") || uuid.length !== 8) return uuid;
 
-  const raw = uuid.substring(2); // "000002"
-  const p1 = raw.substring(0, 2);
-  const p2 = raw.substring(2, 4);
-  const p3 = raw.substring(4, 6);
-  return `SN:${p1}:${p2}:${p3}`;
-}

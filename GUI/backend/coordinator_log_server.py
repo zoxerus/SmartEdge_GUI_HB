@@ -280,36 +280,26 @@ async def request_join(request: Request):
 @app.post("/request-leave")
 async def request_leave(request: Request):
     data = await request.json()
-    uuid = data.get("uuid")
-    swarm = data.get("swarm")
+    node_ids = data.get("nids")
 
-    if not uuid or not swarm:
-        return {"success": False, "error": "UUID and swarm are required."}
-
-    print(f"[LEAVE REQUEST] Node UUID: {uuid}, Swarm: {swarm}")
+    if not node_ids or not isinstance(node_ids, list) or not node_ids[0]:
+        return {"success": False, "error": "No UUID provided"}
 
     try:
-        result = subprocess.run(
-            ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_leave.py", uuid],
-            capture_output=True,
-            text=True,
-            timeout=15
-        )
+        args = ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_leave.py"]
+        args.extend(node_ids)  # Pass UUIDs as CLI args
 
-        print("[LEAVE SCRIPT STDOUT]:", result.stdout)
-        print("[LEAVE SCRIPT STDERR]:", result.stderr)
-        print("[LEAVE SCRIPT RETURN CODE]:", result.returncode)
+        result = subprocess.run(args, capture_output=True, text=True, timeout=20)
 
         if result.returncode != 0:
-            return {
-                "success": False,
-                "error": result.stderr or result.stdout or "Leave script failed"
-            }
+            return {"success": False, "error": result.stderr or "Script failed"}
 
         return {"success": True, "output": result.stdout.strip()}
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
 
 
 # === Main startup ===
