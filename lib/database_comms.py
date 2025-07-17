@@ -1,15 +1,18 @@
 import lib.db.cassandra_db as cassandra_db
 # import lib.db.redis_db as redis_db
 import lib.db.defines as db_defines
+from lib.performance_monitor import measure_performance
+from lib.logger_utils import get_logger
 
-db_logger = None
+db_logger = get_logger("coordinator")
+#logger = None
 
 STR_DATABASE_TYPE_REDIS = 'redis'
 STR_DATABASE_TYPE_CASSANDRA = 'cassandra'
 
 DATABASE_IN_USE = None
 DATABASE_SESSION = None
-
+@measure_performance("Coordinator", db_logger)
 def init_database(host, port):
     
     if DATABASE_IN_USE == STR_DATABASE_TYPE_REDIS:
@@ -44,7 +47,7 @@ def init_database(host, port):
         result = session.execute(cassandra_db.QUERY_DATABASE_CREATE_TABLE_DEFAULT_SWARM)
         db_logger.debug(f"Executed database query:\n\t {query}\n\tgot result:\n\t\t{result.one()}")
         return session
-    
+@measure_performance("Coordinator", db_logger)  
 def connect_to_database(host, port):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_REDIS:
         return # redis_db.redis.Redis(host=host, port=port, decode_responses=True)
@@ -59,16 +62,16 @@ def connect_to_database(host, port):
         )
         session = cluster.connect()
         return session
-
+@measure_performance("Coordinator", db_logger)
 def execute_query(query):
     try:
         result =  DATABASE_SESSION.execute(query)
-        db_logger.debug(f"Executed database query:\n{query}\ngot result:\n{'nada'}")
+        db_logger.debug(f"Executed database query:\n{query}")
         return result
     except Exception as e:
         db_logger.debug(f"Error in query:\n{query}, Error message {repr(e)}")
         return -1
-
+@measure_performance("Coordinator", db_logger)
 def get_node_swarm_mac_by_swarm_ip(node_swarm_ip):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f"""SELECT {db_defines.NAMEOF_DATABASE_FIELD_NODE_SWARM_MAC} from 
@@ -90,7 +93,7 @@ def get_node_swarm_mac_by_swarm_ip(node_swarm_ip):
 #         result = execute_query(query)
 #         return result
     
-    
+@measure_performance("Coordinator", db_logger)    
 def update_db_with_node_status(uuid, status):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f"""UPDATE {db_defines.NAMEOF_DATABASE_SWARM_KEYSPACE}.{db_defines.NAMEOF_DATABASE_SWARM_TABLE}
@@ -100,7 +103,7 @@ def update_db_with_node_status(uuid, status):
         result = execute_query(query)
         return result
 
-
+@measure_performance("Coordinator", db_logger)
 def insert_node_into_swarm_database(host_id='', this_ap_id='', node_vip='', node_vmac='', node_phy_mac='', node_uuid='', status=''):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f"""
@@ -115,7 +118,7 @@ def insert_node_into_swarm_database(host_id='', this_ap_id='', node_vip='', node
         """
         result = execute_query(query)
         return result
-
+@measure_performance("Coordinator", db_logger)
 def reuse_node_swarm_id(uuid):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f""" 
@@ -127,6 +130,7 @@ def reuse_node_swarm_id(uuid):
         return result
 
 # GET NEXT AVAILABLE HOST ID FROM SWARM TABLE
+@measure_performance("Coordinator", db_logger)
 def get_next_available_host_id_from_swarm_table(first_host_id, max_host_id, uuid):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         first_result = reuse_node_swarm_id(uuid)
@@ -150,6 +154,7 @@ def get_next_available_host_id_from_swarm_table(first_host_id, max_host_id, uuid
 
 
 # GET NEXT AVAILABLE HOST ID FROM SWARM TABLE
+@measure_performance("Coordinator", db_logger)
 def batch_get_available_host_id_from_swarm_table(first_host_id, max_host_id):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f""" SELECT {db_defines.NAMEOF_DATABASE_FIELD_NODE_SWARM_ID} FROM 
@@ -172,6 +177,7 @@ def batch_get_available_host_id_from_swarm_table(first_host_id, max_host_id):
         
         
 # GET NODE INFO FROM TDD
+@measure_performance("Coordinator", db_logger)
 def get_node_info_from_art(node_uuid):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:    
         query = f""" 
@@ -183,6 +189,7 @@ def get_node_info_from_art(node_uuid):
   
 
 # INSERT INTO TDD
+@measure_performance("Coordinator", db_logger)
 def insert_into_art(node_uuid, current_ap, swarm_id, ap_port, node_ip):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:    
         query = f"""
@@ -205,7 +212,7 @@ def insert_into_art(node_uuid, current_ap, swarm_id, ap_port, node_ip):
             """
         result = execute_query(query)
         return result
-
+@measure_performance("Coordinator", db_logger)
 def delete_node_from_art(uuid):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f"""
@@ -215,7 +222,7 @@ def delete_node_from_art(uuid):
         execute_query(query)
         delete_node_from_swarm_database(uuid)
         
-    
+@measure_performance("Coordinator", db_logger)    
 def delete_node_from_swarm_database(uuid):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f"""
@@ -226,7 +233,7 @@ def delete_node_from_swarm_database(uuid):
         return result
         
         
-        
+@measure_performance("Coordinator", db_logger)        
 def update_art_with_node_info(node_uuid, node_current_ap, node_current_swarm, node_current_ip):
     if DATABASE_IN_USE == STR_DATABASE_TYPE_CASSANDRA:
         query = f"""

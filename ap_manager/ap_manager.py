@@ -8,6 +8,7 @@ sys.path.append('../..')
 import subprocess
 import logging
 import logging.handlers
+
 import threading
 import socket
 import atexit
@@ -24,8 +25,13 @@ import lib.global_constants as cts
 import lib.helper_functions as utils
 import json
 import concurrent.futures
+
+
 import lib.node_discovery as se_net
+
 from argparse import ArgumentParser
+from lib.performance_monitor import measure_performance
+
 
 
 STRs = cts.String_Constants
@@ -85,9 +91,9 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 PROGRAM_LOG_FILE_NAME = './logs/ap.log'
 
 os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
-logger = logging.getLogger(f'{THIS_AP_UUID}')
+logger = logging.getLogger("Access Point")
 
-log_info_formatter =  logging.Formatter("[AP] %(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
+log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
 
 
 client_monitor_log_console_handler = logging.StreamHandler(sys.stdout)
@@ -230,6 +236,7 @@ def initialize_program():
     print('\n\n\nAP Started')
 
 # a handler to clean exit the programs
+@measure_performance("Access Point", logger) 
 def exit_handler():
     logger.debug('Handling exit')
     for snic in psutil.net_if_addrs():
@@ -239,6 +246,7 @@ def exit_handler():
 
 # a function for sending the configuration to the swarm node
 # this connects to the TCP server running in the swarm node and sends the configuration as a string
+@measure_performance("Access Point", logger)
 def send_swarmNode_config(config_messge, node_socket_server_address):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as node_socket_client:
         try:
@@ -255,6 +263,7 @@ def send_swarmNode_config(config_messge, node_socket_server_address):
             return -1
 
 
+@measure_performance("Access Point", logger)
 def create_vxlan_by_host_id(vxlan_id, remote, port=4789): 
     logger.debug(f'Adding se_vxlan{vxlan_id}')
     
@@ -279,6 +288,7 @@ def create_vxlan_by_host_id(vxlan_id, remote, port=4789):
     return vxlan_id
         
 
+@measure_performance("Access Point", logger)
 def delete_vxlan_by_host_id(host_id):
     logger.debug(f'\nDeleting se_vxlan{host_id}')
     delete_vxlan_shell_command = "ip link del se_vxlan%s" % (host_id)
@@ -292,6 +302,7 @@ def delete_vxlan_by_host_id(host_id):
         logger.debug(f'\nCreated Vxlans after removing {host_id}: {created_vxlans}')
 
 
+@measure_performance("Access Point", logger)
 def get_mac_from_arp_by_physical_ip(ip):
     shell_command = "arp -en"
     result = subprocess.run( shell_command.split(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -306,7 +317,7 @@ def get_mac_from_arp_by_physical_ip(ip):
     return None
 
 
-
+@measure_performance("Access Point", logger)
 def get_ip_from_arp_by_physical_mac(physical_mac):
     shell_command = "arp -en"
     t0 = time.time()
@@ -321,7 +332,7 @@ def get_ip_from_arp_by_physical_mac(physical_mac):
                 logger.debug(f'\nIP {ip} was found in ARP for {physical_mac} after {time.time() - t0} Seconds')                
                 return ip
  
-
+@measure_performance("Access Point", logger)
 def get_next_available_vxlan_id():
     shell_command = "ip -d link show | awk '/vxlan id/ {print $3}' "
     process_ret = subprocess.run(shell_command, text=True, shell=True, stdout=subprocess.PIPE )
@@ -330,7 +341,7 @@ def get_next_available_vxlan_id():
     result = min(set(range(1, 500 )) - set(id_list)) 
     return result 
 
-
+@measure_performance("Access Point", logger)
 async def handle_new_connected_station(station_physical_mac_address):
     logger.debug(f"handling newly connected staion {station_physical_mac_address}")
     
@@ -530,7 +541,7 @@ async def handle_new_connected_station(station_physical_mac_address):
                         action_name='MyIngress.ac_ipv4_forward_mac', match_keys=f'{station_vip}/32' , 
                         action_params= f'{cfg.swarm_backbone_switch_port} {ap_mac}', thrift_ip= ap_ip, instance=sw_data['cli_instance'] )
 
-                    
+@measure_performance("Access Point", logger)                    
 async def handle_disconnected_station(station_physical_mac_address):
     try: 
         # sometimes when the program is started there are already connected nodes to the AP.
@@ -631,7 +642,7 @@ def monitor_stations():
             asyncio.run(  handle_disconnected_station(station_physical_mac_address=station_physical_mac_address) )
 
 
-
+@measure_performance("Access Point", logger)
 def ap_id_to_vxlan_id(access_point_id):
     vxlan_id = cfg.vxlan_ids[access_point_id]
     return vxlan_id

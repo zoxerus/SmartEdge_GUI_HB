@@ -2,6 +2,7 @@
 
 import { handleDBSnapshot } from './views/dbView.js';
 import { appendCoordinatorLog, appendAPLog } from './views/logView.js';
+import { appendPerformanceLog } from './views/performanceView.js';
 
 export function connectWebSocket() {
   // === DB WebSocket ===
@@ -19,6 +20,9 @@ export function connectWebSocket() {
   logSocket.onmessage = function (event) {
     const message = JSON.parse(event.data);
     if (message.type === "log") {
+      if (message.message.includes("[Performance]")) {
+        console.log("[Frontend] Appending performance log:", message.message);
+        appendPerformanceLog(message.message);}
       if (message.source === "COORDINATOR") {
         console.log("[Frontend] Appending coordinator log:", message.message);
         appendCoordinatorLog(message.message);

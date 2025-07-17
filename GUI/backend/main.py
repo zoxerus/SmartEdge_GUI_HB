@@ -10,7 +10,8 @@ from cassandra_interface import query_art_nodes
 import uvicorn
 import asyncio
 import os
-
+from fastapi import Request
+import subprocess
 
 from websocket_handler import connect_client, disconnect_client
 from tcp_log_receiver import start_tcp_server
@@ -64,6 +65,34 @@ def get_art_nodes():
     except Exception as e:
         return {"error": str(e)}
 
+
+@app.post("/request-join")
+async def request_join(request: Request):
+    data = await request.json()
+    uuid = data.get("uuid")
+
+    if not uuid:
+        return {"success": False, "error": "No UUID provided"}
+
+    try:
+        result = subprocess.run(
+            ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_join.py", uuid],
+            capture_output=True,
+            text=True,
+            timeout=5  # Optional: timeout in seconds
+        )
+        print("[SCRIPT STDOUT]:", result.stdout)
+        print("[SCRIPT STDERR]:", result.stderr)
+        print("[SCRIPT RETURN CODE]:", result.returncode)
+
+
+        if result.returncode != 0:
+            return {"success": False, "error": result.stderr or "Script failed"}
+
+        return {"success": True, "output": result.stdout.strip()}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 # Entry point
 if __name__ == "__main__":

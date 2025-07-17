@@ -13,6 +13,8 @@ from cassandra.query import dict_factory
 #from lib.database_comms import get_session
 from cassandra.cluster import Cluster
 #from datetime import datetime, timedelta
+from fastapi import Request
+import subprocess
 import os
 import json
 
@@ -93,21 +95,6 @@ async def websocket_db_stream(websocket: WebSocket):
         print("[WebSocket] DB GUI client disconnected")
         disconnect_client(websocket)
 
-# @app.get("/art-nodes")
-# def get_art_nodes():
-#     try:
-#         rows = db.DATABASE_SESSION.execute("SELECT uuid, current_ap FROM ks_swarm.art;")
-#         return [
-#             {
-#                 "uuid": row.uuid,
-#                 "swarm_id": row.current_ap,
-#                 "status": "online"  # or logic to detect actual status
-#             }
-#             for row in rows
-#         ]
-#     except Exception as e:
-#         print("❌ /art-nodes ERROR:", str(e))
-#         return {"error": str(e)}
 
 @app.get("/art-nodes")
 def get_art_nodes():
@@ -158,24 +145,6 @@ def get_swarm_members(table_name: str):
         print(f"[/swarms/{table_name}] Error:", e)
         return []
 
-# === TCP log receiver ===
-# async def handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-#     addr = writer.get_extra_info("peername")
-#     print(f"[TCP] Connection from {addr}")
-#     try:
-#         while True:
-#             data = await reader.readline()
-#             if not data:
-#                 break
-#             log_line = data.decode().strip()
-#             print(f"[TCP] Log: {log_line}")
-#             await add_log(log_line)
-#     except Exception as e:
-#         print(f"[TCP] Error with {addr}: {e}")
-#     finally:
-#         print(f"[TCP] Connection closed: {addr}")
-#         writer.close()
-#         await writer.wait_closed()
 
 async def handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     addr = writer.get_extra_info("peername")
@@ -228,49 +197,6 @@ async def add_log(log_line: str):
 
 
 
-# async def add_log(log_line: str):
-#     async with log_buffer_lock:
-#         log_buffer.append(log_line)
-#     await send_log_to_websocket(log_line)
-
-# async def send_log_to_websocket(log_message: str):
-#     """Sends a log message to the connected GUI client if available."""
-#     global active_websocket
-#     async with websocket_lock:
-#         if active_websocket:
-#             try:
-#                 json_payload = json.dumps({
-#                     "type": "log",
-#                     "source": "COORDINATOR",
-#                     "message": log_message
-#                 })
-#                 await active_websocket.send_text(json_payload)
-#             except Exception as e:
-#                 print(f"[WebSocket] Error sending log: {e}")
-#                 active_websocket = None
-
-# async def send_log_to_websocket(log_message: str):
-#     global active_websocket
-#     async with websocket_lock:
-#         if active_websocket:
-#             try:
-#                 if log_message.startswith("[AP]"):
-#                     source = "AP"
-#                     stripped_message = log_message[4:].strip()
-#                 else:
-#                     source = "COORDINATOR"
-#                     stripped_message = log_message.strip()
-
-#                 json_payload = json.dumps({
-#                     "type": "log",
-#                     "source": source,
-#                     "message": stripped_message
-#                 })
-#                 await active_websocket.send_text(json_payload)
-#             except Exception as e:
-#                 print(f"[WebSocket] Error sending log: {e}")
-#                 active_websocket = None
-
 async def send_log_to_websocket(log_message: str):
     """Sends a log message to the connected GUI client if available."""
     global active_websocket
@@ -317,6 +243,75 @@ async def periodic_db_fetch():
         await fetch_and_broadcast_data()
         await asyncio.sleep(5)
 
+@app.post("/request-join")
+async def request_join(request: Request):
+    data = await request.json()
+    uuid = data.get("uuid")
+    swarm = data.get("swarm")
+
+    if not uuid:
+        return {"success": False, "error": "No UUID provided"}
+    if not swarm:
+        return {"success": False, "error": "No swarm selected"}
+
+    print(f"[JOIN REQUEST] Node UUID: {uuid}, Target Swarm: {swarm}")
+
+    try:
+        result = subprocess.run(
+            ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_join.py", uuid],
+            capture_output=True,
+            text=True,
+            timeout=20  # Optional: timeout in seconds
+        )
+        print("[SCRIPT STDOUT]:", result.stdout)
+        print("[SCRIPT STDERR]:", result.stderr)
+        print("[SCRIPT RETURN CODE]:", result.returncode)
+
+
+        if result.returncode != 0:
+            return {"success": False, "error": result.stderr or "Script failed"}
+
+        return {"success": True, "output": result.stdout.strip()}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/request-leave")
+async def request_leave(request: Request):
+    data = await request.json()
+    uuid = data.get("uuid")
+    swarm = data.get("swarm")
+
+    if not uuid or not swarm:
+        return {"success": False, "error": "UUID and swarm are required."}
+
+    print(f"[LEAVE REQUEST] Node UUID: {uuid}, Swarm: {swarm}")
+
+    try:
+        result = subprocess.run(
+            ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_leave.py", uuid],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+
+        print("[LEAVE SCRIPT STDOUT]:", result.stdout)
+        print("[LEAVE SCRIPT STDERR]:", result.stderr)
+        print("[LEAVE SCRIPT RETURN CODE]:", result.returncode)
+
+        if result.returncode != 0:
+            return {
+                "success": False,
+                "error": result.stderr or result.stdout or "Leave script failed"
+            }
+
+        return {"success": True, "output": result.stdout.strip()}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # === Main startup ===
 async def main():
     print("[System] Starting Coordinator Log Server...")
@@ -326,8 +321,6 @@ async def main():
     config = uvicorn.Config(app, host="0.0.0.0", port=HTTP_PORT, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
-
-
 
 
 if __name__ == "__main__":

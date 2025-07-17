@@ -227,8 +227,15 @@ body {
 #ask-join-btn {
   margin-top: 10px;
   width: 120px;
-  align-self: flex-start;
+  align-self: flex-start;  
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
 }
+
 
 /* Log box */
 #node-log {
@@ -250,3 +257,49 @@ body {
 #node-log {
   margin-top: 10px;
 }
+
+
+
+.node-log {
+  margin-top: 10px;
+  height: 150px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  background: #1e1e1e;
+  color: #00ff00;
+  font-family: monospace;
+  font-size: 0.9em;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+#member-list li.selected {
+  background-color: #007BFF;
+  color: white;
+  font-weight: bold;
+}
+
+.log-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.log-toolbar button {
+  background-color: #3498db;        /* Blue background */
+  color: white;                     /* White text */
+  padding: 10px 20px;               /* Bigger padding */
+  font-size: 16px;                  /* Bigger font */
+  font-weight: bold;
+  border: none;
+  border-radius: 6px;               /* Rounded corners */
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.log-toolbar button:hover {
+  background-color: #3498db;        /* Darker blue on hover */
+}
+

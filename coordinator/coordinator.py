@@ -29,6 +29,8 @@ import lib.database_comms as db
 import lib.global_constants as cts
 import lib.helper_functions as utils
 import lib.node_discovery as se_net
+from lib.performance_monitor import measure_performance
+
 
 from argparse import ArgumentParser
 
@@ -110,7 +112,7 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 # where to store program logs
 PROGRAM_LOG_FILE_NAME = './logs/coordinator.log'
 os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
-logger = logging.getLogger(THIS_NODE_UUID)
+logger = logging.getLogger("COORDINATOR")
 
 log_socket_handler = SocketStreamHandler( '127.0.0.1', cfg.logs_server_address[1] )
 log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
@@ -165,7 +167,8 @@ SE_NODE = se_net.Node(node_type=NODE_TYPE, node_uuid=THIS_NODE_UUID,
 
 def get_ap_ip_from_ap_id(ap_id):
     try:
-        return cfg.ap_list[ap_id][0]
+      #  return cfg.ap_list[ap_id][0]
+        return SE_NODE.get_aps_dict()[ap_id]['sebackbone_ip']
     except:
         return None
     
@@ -213,18 +216,18 @@ class Swarm_Node_Handler:
     def reject_join_request(self):
         pass
 
-         
+@measure_performance("Coordinator", logger)         
 async def offboard_node(host_id, uuid, ap_id, node_vip, ap_port, available_nodes, lock):
     SN_UUID = uuid
     logger.debug(f'Kicking Node {SN_UUID} ip {node_vip} from Swarm')
     
     # first we get the ip of the access point from the ap list
-    ap_ip = get_ap_ip_from_ap_id(ap_id)
-    # instance = SE_NODE.known_aps[ap_id]['cli_instance']
+    # ap_ip = get_ap_ip_from_ap_id(ap_id)
+    # # instance = SE_NODE.known_aps[ap_id]['cli_instance']
     
-    if (ap_ip == None):
-        logger.error(f'Error: could not find IP of access point {ap_id}')
-        return
+    # if (ap_ip == None):
+    #     logger.error(f'Error: could not find IP of access point {ap_id}')
+    #     return
 
     swarmNode_config = {
         STRs.TYPE.name: 'go_away'
@@ -251,6 +254,7 @@ async def offboard_node(host_id, uuid, ap_id, node_vip, ap_port, available_nodes
         return
             
 
+@measure_performance("Coordinator", logger)
 async def onboard_node(host_id, uuid, ap_id, node_s0_ip, ap_port, available_nodes, lock):
     SN_UUID = uuid
     logger.debug(f'Accepted Node {SN_UUID} in Swarm')
@@ -331,7 +335,8 @@ def set_keepalive_linux(sock, after_idle_sec=1, interval_sec=3, max_fails=5):
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval_sec)
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, max_fails)
 
-            
+
+@measure_performance("Coordinator", logger)          
 def handle_swarm_node(node_socket, address):
     try:
         message = node_socket.recv(1024).decode()
@@ -349,6 +354,7 @@ def handle_swarm_node(node_socket, address):
  
 
 # receives TCP connections from swarm nodes
+@measure_performance("Coordinator", logger)
 def swarm_coordinator():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as serversocket:
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -370,7 +376,7 @@ str_NODE_LEAVE_LIST = 'nll'
 str_AVAILABLE_NODES = 'avn'
 str_NODE_IDS = 'nids'
 
-
+@measure_performance("Coordinator", logger)
 async def handle_ac_communication(ac_socket):
     ac_message_in = ac_socket.recv(1024).decode()
     logger.debug(f'ac_message_in: {ac_message_in}')
@@ -430,6 +436,10 @@ async def handle_ac_communication(ac_socket):
             available_nodes_aps.append(row.current_ap)
             available_nodes_ports.append(row.ap_port)
         num_ips = len(available_nodes_ips)
+        print(f'avialalbe_nodes_ids: {availalbe_nodes_ids}')
+        print(f'available_nodes_ips: {available_nodes_ips}')
+        print(f'available_nodes_aps: {available_nodes_aps}')
+        print(f'available_nodes_ports: {available_nodes_ports}')
         if num_ips == 0: 
             return
         available_host_ids = db.batch_get_available_host_id_from_swarm_table(first_host_id=cfg.this_swarm_dhcp_start,
@@ -468,6 +478,7 @@ def node_handler(HOST, HIGHER_PORT):
 def ap_handler(HOST, HIGHER_PORT):
     return
 
+@measure_performance("Coordinator", logger)
 def adaptive_coordinator_handler(HOST, HIGHER_PORT):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as serversocket:
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

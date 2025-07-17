@@ -5,6 +5,8 @@ import { loadHomeView } from './views/homeView.js';
 import { loadLogView } from './views/logView.js';
 import { loadDBView } from './views/dbView.js';
 import { loadNodeSwarmView } from './views/nodeSwarmView.js';
+import { loadPerformanceView } from './views/performanceView.js';
+
 
 document.addEventListener("DOMContentLoaded", () => {
   // Start WebSocket once
@@ -29,5 +31,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-node-swarm").addEventListener("click", () => {
     loadNodeSwarmView(); // ✅ consistent style
   });
+
+  document.getElementById("btn-performance").addEventListener("click", () => {
+  loadPerformanceView();
+});
 });
 

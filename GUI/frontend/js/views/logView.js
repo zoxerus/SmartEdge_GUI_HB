@@ -17,15 +17,50 @@ export function loadLogView() {
 
   container.innerHTML = `
     <h2>Coordinator Logs</h2>
+    <div class="log-toolbar">
+      <button id="download-coordinator-log">Download</button>
+      <button id="clear-coordinator-log">Delete</button>
+    </div>
     <div id="coordinator-logs" class="log-box">
       ${coordinatorLogs.length === 0 ? '<span class="placeholder">Waiting for logs...</span>' : ''}
     </div>
 
     <h2>Access Point Logs</h2>
+    <div class="log-toolbar">
+      <button id="download-ap-log">Download</button>
+      <button id="clear-ap-log">Delete</button>
+    </div>
     <div id="ap-logs" class="log-box">
       ${apLogs.length === 0 ? '<span class="placeholder">Waiting for logs...</span>' : ''}
     </div>
   `;
+  // Coordinator buttons
+  document.getElementById('download-coordinator-log').addEventListener('click', () => {
+    const text = coordinatorLogs.join('\n');
+    downloadTextAsFile(text, 'coordinator_logs.log');
+  });
+
+  document.getElementById('clear-coordinator-log').addEventListener('click', () => {
+    coordinatorLogs = [];
+    const box = document.getElementById("coordinator-logs");
+    box.innerHTML = '<span class="placeholder">Waiting for logs...</span>';
+    hasReceivedCoordinatorLog = false;
+  });
+
+  // AP buttons
+  document.getElementById('download-ap-log').addEventListener('click', () => {
+    const text = apLogs.join('\n');
+    downloadTextAsFile(text, 'ap_logs.log');
+  });
+
+  document.getElementById('clear-ap-log').addEventListener('click', () => {
+    apLogs = [];
+    const box = document.getElementById("ap-logs");
+    box.innerHTML = '<span class="placeholder">Waiting for logs...</span>';
+    hasReceivedAPLog = false;
+  });
+
+
 
   // Re-render existing logs if we have any
   if (coordinatorLogs.length > 0) {
@@ -83,4 +118,13 @@ export function appendAPLog(msg) {
     logBox.appendChild(div);
     logBox.scrollTop = logBox.scrollHeight;
   }
+}
+
+function downloadTextAsFile(text, filename) {
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
