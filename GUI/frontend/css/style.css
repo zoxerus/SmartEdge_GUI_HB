@@ -303,3 +303,115 @@ body {
   background-color: #3498db;        /* Darker blue on hover */
 }
 
+/* Log View Toolbar Styles */
+.log-section {
+  margin-bottom: 2rem;
+}
+
+.log-toolbar-split {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  gap: 1rem;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.left-group {
+  justify-content: flex-start;
+  flex: 1;
+}
+
+.right-group {
+  justify-content: flex-end;
+}
+
+.start-button {
+  padding: 0.5rem 1rem;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.action-button {
+  padding: 0.5rem 1rem;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.action-button.delete {
+  background-color: #2196F3;
+}
+
+/* Ensure log boxes take full width */
+.log-box {
+  width: 100%;
+}
+
+.stop-button {
+  padding: 0.5rem 1rem;
+  background-color: #e74c3c; /* red */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.stop-button:hover {
+  background-color: #c0392b;
+}
+
+/* Button states */
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Loading spinner */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.button-text {
+  vertical-align: middle;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .log-toolbar-split {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .toolbar-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .log-box {
+    height: 200px;
+  }
+}

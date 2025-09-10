@@ -1,17 +1,14 @@
 import time
-import logging
 import asyncio
 from functools import wraps
 from datetime import datetime
-from lib.logger_utils import get_logger
 
-def measure_performance(component_name, logger=None):
+def measure_performance(component_name, logger):
     """
-    Decorator to measure execution time of sync or async functions.
-    Logs to the provided logger or falls back to a default logger.
+    Decorator factory with explicit logger.
+    Logs format:
+    [Metric] [Component] timestamp [INFO]: Function '...' executed ...
     """
-    log = logger or get_logger("performance")
-
     def decorator(func):
         if asyncio.iscoroutinefunction(func):
             @wraps(func)
@@ -21,9 +18,8 @@ def measure_performance(component_name, logger=None):
                 end_time = time.perf_counter()
                 duration = end_time - start_time
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                log.info(
-                    f"[Performance] [{component_name}] Function '{func.__name__}' "
-                    f"executed in {duration:.6f} seconds "
+                logger.info(
+                    f"Function '{func.__name__}' executed in {duration:.6f} seconds "
                     f"({duration * 1000:.2f} ms) at {timestamp}"
                 )
                 return result
@@ -37,27 +33,24 @@ def measure_performance(component_name, logger=None):
                 end_time = time.perf_counter()
                 duration = end_time - start_time
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                log.info(
-                    f"[Performance] [{component_name}] Function '{func.__name__}' "
-                    f"executed in {duration:.6f} seconds "
+                logger.info(
+                    f"Function '{func.__name__}' executed in {duration:.6f} seconds "
                     f"({duration * 1000:.2f} ms) at {timestamp}"
                 )
                 return result
             return sync_wrapper
+
     return decorator
 
 
 class PerformanceTimer:
     """
-    Context manager for timing code blocks.
-    Usage:
-        with PerformanceTimer("Coordinator", "Some Block", logger):
-            ...
+    Context manager for manually measuring code block performance.
     """
-    def __init__(self, component_name, block_name, logger=None):
+    def __init__(self, component_name, block_name, logger):
         self.component_name = component_name
         self.block_name = block_name
-        self.logger = logger or get_logger("performance")
+        self.logger = logger
 
     def __enter__(self):
         self.start_time = time.perf_counter()
@@ -66,9 +59,7 @@ class PerformanceTimer:
         end_time = time.perf_counter()
         duration = end_time - self.start_time
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
         self.logger.info(
-            f"[Performance] [{self.component_name}] Code block '{self.block_name}' "
-            f"executed in {duration:.6f} seconds "
+            f"Code block '{self.block_name}' executed in {duration:.6f} seconds "
             f"({duration * 1000:.2f} ms) at {timestamp}"
         )

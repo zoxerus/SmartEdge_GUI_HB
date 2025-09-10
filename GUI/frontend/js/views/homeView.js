@@ -7,7 +7,7 @@ export function loadHomeView() {
   }
 
   container.innerHTML = `
-    <h2>Welcome to SmartEdge</h2>
-    <p>This dashboard allows you to monitor logs, database snapshots, and manage smart nodes.</p>
+    <h2>Welcome to Swarm Management Dashboard</h2>
+    <p>This dashboard allows you to start swarm's components, monitor logs, ART snapshots, and manage smart nodes.</p>
   `;
 }

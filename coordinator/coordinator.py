@@ -22,15 +22,11 @@ import logging.handlers
 import ipaddress
 import json
 import threading
-import queue
-import time
 import lib.bmv2_thrift_lib as bmv2
 import lib.database_comms as db
 import lib.global_constants as cts
 import lib.helper_functions as utils
 import lib.node_discovery as se_net
-from lib.performance_monitor import measure_performance
-
 
 from argparse import ArgumentParser
 
@@ -44,60 +40,42 @@ args = parser.parse_args()
 
 
 
-class SocketStreamHandler(logging.Handler):
+class SocketStreamHandler(logging.StreamHandler):
+    """Custom StreamHandler to send logs over TCP."""
     def __init__(self, host, port):
-        super().__init__()
+        super().__init__(sys.stdout)  # StreamHandler needs an output stream
         self.host = host
         self.port = port
         self.sock = None
-        self.queue = queue.Queue()
-        self.running = True
-        self.thread = threading.Thread(target=self._send_worker, daemon=True)
-        self.thread.start()
-        print(f"[LogForwarder] Initialized with target {self.host}:{self.port}")
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            self.queue.put(msg)
-        except Exception as e:
-            print(f"[LogForwarder] Emit error: {e}")
+        self._connect()
 
     def _connect(self):
+        """Establish connection to log server."""
         try:
             self.sock = socket.create_connection((self.host, self.port))
-            print(f"[LogForwarder] Connected to log server at {self.host}:{self.port}")
         except Exception as e:
-            print(f"[LogForwarder] Connection failed: {e}")
+            print(f"Failed to connect to log server: {e}")
             self.sock = None
 
-    def _send_worker(self):
-        while self.running:
-            try:
-                msg = self.queue.get(timeout=1)  # wait 1 second for a message
-                if self.sock is None:
-                    self._connect()
-                if self.sock:
-                    try:
-                        self.sock.sendall((msg + "\n").encode('utf-8'))
-                        print(f"[LogForwarder] Sent: {msg}")
-                    except Exception as e:
-                        print(f"[LogForwarder] Send failed: {e}")
-                        self.sock = None
-            except queue.Empty:
-                continue  # just loop again
-            except Exception as e:
-                print(f"[LogForwarder] Worker error: {e}")
+    def emit(self, record):
+        """Send log message to log server."""
+        if not self.sock:
+            self._connect()  # Try to reconnect if needed
+            if not self.sock:
+                return  # Drop log if connection fails
+
+        try:
+            msg = self.format(record) + "\n"
+            self.sock.sendall(msg.encode('utf-8'))  # Send log as bytes
+        except Exception as e:
+            print(f"Error sending log: {e}")
+            self.sock = None  # Reset socket on failure
 
     def close(self):
-        self.running = False
+        """Close the socket when done."""
         if self.sock:
-            try:
-                self.sock.close()
-            except:
-                pass
+            self.sock.close()
         super().close()
-
 
 loopback_if = 'lo:0'
 
@@ -112,13 +90,12 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 # where to store program logs
 PROGRAM_LOG_FILE_NAME = './logs/coordinator.log'
 os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
-logger = logging.getLogger("COORDINATOR")
+logger = logging.getLogger(THIS_NODE_UUID)
 
 log_socket_handler = SocketStreamHandler( '127.0.0.1', cfg.logs_server_address[1] )
 log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
 log_socket_handler.setFormatter(log_info_formatter)
-log_socket_handler.setLevel(args.log_level)
-logger.addHandler(log_socket_handler)
+log_socket_handler.setLevel(logging.INFO)
 
 log_console_handler = logging.StreamHandler(sys.stdout)
 log_console_handler.setLevel(args.log_level)
@@ -162,17 +139,6 @@ SE_NODE = se_net.Node(node_type=NODE_TYPE, node_uuid=THIS_NODE_UUID,
                       node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
 
 
-# a function to parse a string and extract integers
-# needed for interactiosn with bmv2
-
-def get_ap_ip_from_ap_id(ap_id):
-    try:
-      #  return cfg.ap_list[ap_id][0]
-        return SE_NODE.get_aps_dict()[ap_id]['sebackbone_ip']
-    except:
-        return None
-    
-    
 
 class Swarm_Node_Handler:
     def __init__(self, message, node_socket: socket.socket):
@@ -216,19 +182,11 @@ class Swarm_Node_Handler:
     def reject_join_request(self):
         pass
 
-@measure_performance("Coordinator", logger)         
+         
 async def offboard_node(host_id, uuid, ap_id, node_vip, ap_port, available_nodes, lock):
     SN_UUID = uuid
     logger.debug(f'Kicking Node {SN_UUID} ip {node_vip} from Swarm')
     
-    # first we get the ip of the access point from the ap list
-    # ap_ip = get_ap_ip_from_ap_id(ap_id)
-    # # instance = SE_NODE.known_aps[ap_id]['cli_instance']
-    
-    # if (ap_ip == None):
-    #     logger.error(f'Error: could not find IP of access point {ap_id}')
-    #     return
-
     swarmNode_config = {
         STRs.TYPE.name: 'go_away'
     }
@@ -254,7 +212,6 @@ async def offboard_node(host_id, uuid, ap_id, node_vip, ap_port, available_nodes
         return
             
 
-@measure_performance("Coordinator", logger)
 async def onboard_node(host_id, uuid, ap_id, node_s0_ip, ap_port, available_nodes, lock):
     SN_UUID = uuid
     logger.debug(f'Accepted Node {SN_UUID} in Swarm')
@@ -335,8 +292,7 @@ def set_keepalive_linux(sock, after_idle_sec=1, interval_sec=3, max_fails=5):
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval_sec)
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, max_fails)
 
-
-@measure_performance("Coordinator", logger)          
+            
 def handle_swarm_node(node_socket, address):
     try:
         message = node_socket.recv(1024).decode()
@@ -354,7 +310,6 @@ def handle_swarm_node(node_socket, address):
  
 
 # receives TCP connections from swarm nodes
-@measure_performance("Coordinator", logger)
 def swarm_coordinator():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as serversocket:
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -376,98 +331,119 @@ str_NODE_LEAVE_LIST = 'nll'
 str_AVAILABLE_NODES = 'avn'
 str_NODE_IDS = 'nids'
 
-@measure_performance("Coordinator", logger)
+
 async def handle_ac_communication(ac_socket):
-    ac_message_in = ac_socket.recv(1024).decode()
-    logger.debug(f'ac_message_in: {ac_message_in}')
-    ac_message_in_json = json.loads(ac_message_in)
-    if ac_message_in_json[str_TYPE] == str_NODE_JOIN_LIST:
-        # nodes_id_tuple = tuple(ac_message_in_json[str_NODE_IDS])
-        query = f"SELECT * FROM ks_swarm.art WHERE uuid IN ({', '.join(repr(item) for item in ac_message_in_json[str_NODE_IDS])});"
-        rows = db.execute_query(query)
-        availalbe_nodes_ids = []
-        available_nodes_ips = []
-        available_nodes_aps = []
-        available_nodes_ports = []
-        for row in rows:
-            if row.current_swarm == 0:
+    try:
+        ac_message_in = ac_socket.recv(1024)
+        if not ac_message_in:
+            logger.error('connection closed before sending data; ignoring')
+            return
+        logger.debug(f'ac_message_in: {ac_message_in}')
+        ac_message_in_json = json.loads(ac_message_in.decode())
+        if ac_message_in_json[str_TYPE] == str_NODE_JOIN_LIST:
+            query = f"""SELECT * FROM ks_swarm.art WHERE uuid IN (
+                {', '.join(repr(item) for item in ac_message_in_json[str_NODE_IDS])});"""
+            rows = db.execute_query(query)
+            availalbe_nodes_ids = []
+            available_nodes_ips = []
+            available_nodes_aps = []
+            available_nodes_ports = []
+            for row in rows:
+                if row.current_swarm == 0:
+                    availalbe_nodes_ids.append(row.uuid)
+                    available_nodes_ips.append(row.virt_ip)
+                    available_nodes_aps.append(row.current_ap)
+                    available_nodes_ports.append(row.ap_port)
+            num_ips = len(available_nodes_ips)
+            if num_ips == 0: 
+                return
+            available_host_ids = db.batch_get_available_host_id_from_swarm_table(
+                first_host_id   =   cfg.this_swarm_dhcp_start,
+                    max_host_id =   cfg.this_swarm_dhcp_end )
+        
+            print('avialalbe_host_ids: ', available_host_ids)
+            available_nodes = []
+            lock = asyncio.Lock()
+            tasks = []
+            for i in range(0, num_ips ):
+                host_id = available_host_ids[i]
+                node_uuid = availalbe_nodes_ids[i]
+                node_s0_ip = available_nodes_ips[i]
+                ap_id = available_nodes_aps[i]
+                ap_port = available_nodes_ports[i]
+                task = asyncio.create_task( 
+                    onboard_node( host_id=host_id,
+                                uuid=node_uuid, 
+                                ap_id=ap_id, 
+                                node_s0_ip=node_s0_ip, 
+                                ap_port=ap_port, 
+                                available_nodes=available_nodes, 
+                                lock=lock) 
+                    )
+                
+                tasks.append(task)
+        
+            await asyncio.gather(*tasks)  # Wait for all tasks to complete
+        
+            message = {
+                'Type': str_AVAILABLE_NODES,
+                str_NODE_IDS: available_nodes 
+                }
+            
+            str_message = json.dumps(message)
+            try:
+                ac_socket.sendall(str_message.encode())
+            except (BrokenPipeError, ConnectionResetError) as e:
+                logger.error(f"error sending request: {json.dumps(message, indent= 2)}")
+                return
+
+            
+        elif ac_message_in_json[str_TYPE] == str_NODE_LEAVE_LIST:
+            query = f"""SELECT * FROM ks_swarm.art WHERE uuid IN (
+                {', '.join(repr(item) for item in ac_message_in_json[str_NODE_IDS])
+                });"""
+            rows = db.execute_query(query)
+            availalbe_nodes_ids = []
+            available_nodes_ips = []
+            available_nodes_aps = []
+            available_nodes_ports = []
+            for row in rows:
                 availalbe_nodes_ids.append(row.uuid)
                 available_nodes_ips.append(row.virt_ip)
                 available_nodes_aps.append(row.current_ap)
                 available_nodes_ports.append(row.ap_port)
-        num_ips = len(available_nodes_ips)
-        if num_ips == 0: 
-            return
-        available_host_ids = db.batch_get_available_host_id_from_swarm_table(first_host_id=cfg.this_swarm_dhcp_start,
-                    max_host_id=cfg.this_swarm_dhcp_end)
-        
-        print('avialalbe_host_ids: ', available_host_ids)
-        available_nodes = []
-        lock = asyncio.Lock()
-        tasks = []
-        for i in range(0, num_ips ):
-            host_id = available_host_ids[i]
-            node_uuid = availalbe_nodes_ids[i]
-            node_s0_ip = available_nodes_ips[i]
-            ap_id = available_nodes_aps[i]
-            ap_port = available_nodes_ports[i]
-            task = asyncio.create_task( onboard_node( host_id=host_id, uuid=node_uuid, ap_id=ap_id, node_s0_ip=node_s0_ip, 
+            num_ips = len(available_nodes_ips)
+            if num_ips == 0: 
+                return
+            available_host_ids = db.batch_get_available_host_id_from_swarm_table(first_host_id=cfg.this_swarm_dhcp_start,
+                        max_host_id=cfg.this_swarm_dhcp_end)
+            available_nodes = []
+            lock = asyncio.Lock()
+            tasks = []
+            for i in range(0, num_ips ):
+                host_id = available_host_ids[i]
+                node_uuid = availalbe_nodes_ids[i]
+                node_s0_ip = available_nodes_ips[i]
+                ap_id = available_nodes_aps[i]
+                ap_port = available_nodes_ports[i]
+                task = asyncio.create_task( offboard_node( host_id=host_id, uuid=node_uuid, ap_id=ap_id, node_vip=node_s0_ip, 
                                       ap_port=ap_port, available_nodes=available_nodes, lock=lock) )
-            tasks.append(task)
+                tasks.append(task)
         
-        await asyncio.gather(*tasks)  # Wait for all tasks to complete
+            await asyncio.gather(*tasks)  # Wait for all tasks to complete
         
-        message = {'Type': str_AVAILABLE_NODES,
-           str_NODE_IDS: available_nodes 
-           }
-        str_message = json.dumps(message)
-        ac_socket.sendall( bytes( str_message.encode() ) )
-        
-    elif ac_message_in_json[str_TYPE] == str_NODE_LEAVE_LIST:
-        query = f"SELECT * FROM ks_swarm.art WHERE uuid IN ({', '.join(repr(item) for item in ac_message_in_json[str_NODE_IDS])});"
-        rows = db.execute_query(query)
-        availalbe_nodes_ids = []
-        available_nodes_ips = []
-        available_nodes_aps = []
-        available_nodes_ports = []
-        for row in rows:
-            availalbe_nodes_ids.append(row.uuid)
-            available_nodes_ips.append(row.virt_ip)
-            available_nodes_aps.append(row.current_ap)
-            available_nodes_ports.append(row.ap_port)
-        num_ips = len(available_nodes_ips)
-        print(f'avialalbe_nodes_ids: {availalbe_nodes_ids}')
-        print(f'available_nodes_ips: {available_nodes_ips}')
-        print(f'available_nodes_aps: {available_nodes_aps}')
-        print(f'available_nodes_ports: {available_nodes_ports}')
-        if num_ips == 0: 
-            return
-        available_host_ids = db.batch_get_available_host_id_from_swarm_table(first_host_id=cfg.this_swarm_dhcp_start,
-                    max_host_id=cfg.this_swarm_dhcp_end)
-        available_nodes = []
-        lock = asyncio.Lock()
-        tasks = []
-        for i in range(0, num_ips ):
-            host_id = available_host_ids[i]
-            node_uuid = availalbe_nodes_ids[i]
-            node_s0_ip = available_nodes_ips[i]
-            ap_id = available_nodes_aps[i]
-            ap_port = available_nodes_ports[i]
-            task = asyncio.create_task( offboard_node( host_id=host_id, uuid=node_uuid, ap_id=ap_id, node_vip=node_s0_ip, 
-                                      ap_port=ap_port, available_nodes=available_nodes, lock=lock) )
-            tasks.append(task)
-        
-        await asyncio.gather(*tasks)  # Wait for all tasks to complete
-        
-        message = {'Type': str_AVAILABLE_NODES,
-           str_NODE_IDS: available_nodes 
-           }
-        str_message = json.dumps(message)
-        ac_socket.sendall( bytes( str_message.encode() ) )
-        
-    return
+            message = {'Type': str_AVAILABLE_NODES,
+               str_NODE_IDS: available_nodes 
+            }
+            str_message = json.dumps(message)
+            try:
+                ac_socket.sendall( bytes( str_message.encode() ) )
+            except Exception as e:
+                logger.error(f"error sending request: {json.dumps(message, indent= 2)}")
+    except Exception as e:
+        logger.error(e)
 
-HOST = 'localhost'
+HOST = '0.0.0.0'
 NODE_PORT = 9997
 AP_PORT = 9998
 HIGHER_PORT = 9999
@@ -478,23 +454,31 @@ def node_handler(HOST, HIGHER_PORT):
 def ap_handler(HOST, HIGHER_PORT):
     return
 
-@measure_performance("Coordinator", logger)
 def adaptive_coordinator_handler(HOST, HIGHER_PORT):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as serversocket:
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         serversocket.bind((HOST, HIGHER_PORT))
-        set_keepalive_linux(sock= serversocket, after_idle_sec=1, interval_sec=3, max_fails= 5)
-        serversocket.listen(3)  # max number of connections
+        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        serversocket.listen(3)
         print('AC Thread is Running: waiting for communication ..')
         iter = 0
         while True:
-            iter = iter + 1
-            logger.debug(f'Listening on {HOST}:{HIGHER_PORT} waiting for requests from Adaptive Coordinator, iteration {iter}')
-            (ac_socket, address) = serversocket.accept()
-            logger.debug(f'received connection request from {address}')
-            asyncio.run( handle_ac_communication(ac_socket) )
-            
-    return
+            iter += 1
+            logger.debug(f'Listening on {HOST}:{HIGHER_PORT} iteration {iter}')
+            ac_socket, address = serversocket.accept()
+            try:
+                set_keepalive_linux(ac_socket, after_idle_sec=30, interval_sec=10, max_fails=5)
+                logger.debug(f'received connection request from {address}')
+                asyncio.run(handle_ac_communication(ac_socket))
+            except Exception as e:
+                logger.error(f'AC handler error from {address}: {e}')
+            finally:
+                try:
+                    ac_socket.shutdown(socket.SHUT_RDWR)
+                except Exception:
+                    pass
+                ac_socket.close()
+
 
 
 def exit_handler():

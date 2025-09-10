@@ -14,7 +14,7 @@ export function loadPerformanceView() {
   }
 
   container.innerHTML = `
-    <h2>Coordinator Performance Logs</h2>
+    <h2>Coordinator Metric Logs</h2>
     <div class="log-toolbar">
       <button id="download-coordinator-perf">Download</button>
       <button id="clear-coordinator-perf">Delete</button>
@@ -23,7 +23,7 @@ export function loadPerformanceView() {
       ${coordinatorPerfLogs.length === 0 ? '<span class="placeholder">Waiting for logs...</span>' : ''}
     </div>
 
-    <h2>Access Point Performance Logs</h2>
+    <h2>Access Point Metric Logs</h2>
     <div class="log-toolbar">
       <button id="download-ap-perf">Download</button>
       <button id="clear-ap-perf">Delete</button>
@@ -86,9 +86,12 @@ export function loadPerformanceView() {
   }
 }
 
-export function appendPerformanceLog(msg) {
-  if (msg.includes("[Coordinator]")) {
-    coordinatorPerfLogs.push(msg);
+export function appendPerformanceLog(msgObj) {
+  // Use the structured message object instead of raw string
+  const formatted = `[${msgObj.timestamp}] [${msgObj.source}] ${msgObj.message}`;
+  
+  if (msgObj.source.toUpperCase().includes("COORDINATOR")) {
+    coordinatorPerfLogs.push(formatted);
     const logBox = document.getElementById("coordinator-perf-logs");
     if (logBox) {
       if (!hasCoordinatorPerfLog) {
@@ -96,12 +99,12 @@ export function appendPerformanceLog(msg) {
         hasCoordinatorPerfLog = true;
       }
       const div = document.createElement("div");
-      div.innerText = msg;
+      div.innerText = formatted;
       logBox.appendChild(div);
       logBox.scrollTop = logBox.scrollHeight;
     }
-  } else if (msg.includes("[Access Point]")) {
-    apPerfLogs.push(msg);
+  } else if (msgObj.source.toUpperCase().includes("ACCESS POINT") || msgObj.source.toUpperCase().includes("AP")) {
+    apPerfLogs.push(formatted);
     const logBox = document.getElementById("ap-perf-logs");
     if (logBox) {
       if (!hasAPPerfLog) {
@@ -109,7 +112,7 @@ export function appendPerformanceLog(msg) {
         hasAPPerfLog = true;
       }
       const div = document.createElement("div");
-      div.innerText = msg;
+      div.innerText = formatted;
       logBox.appendChild(div);
       logBox.scrollTop = logBox.scrollHeight;
     }

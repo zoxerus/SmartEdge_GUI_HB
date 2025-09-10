@@ -20,17 +20,42 @@ export function connectWebSocket() {
   logSocket.onmessage = function (event) {
     const message = JSON.parse(event.data);
     if (message.type === "log") {
-      if (message.message.includes("[Performance]")) {
-        console.log("[Frontend] Appending performance log:", message.message);
-        appendPerformanceLog(message.message);}
-      if (message.source === "COORDINATOR") {
-        console.log("[Frontend] Appending coordinator log:", message.message);
-        appendCoordinatorLog(message.message);
-      } else if (message.source === "AP") {
-        console.log("[Frontend] Appending AP log:", message.message);
-        appendAPLog(message.message);
+      if (message.log_type === "Metric") {
+        console.log("[Frontend] Appending performance log:", message);
+        // Pass the full message object instead of just message.message
+        appendPerformanceLog(message);
+      } else if (message.log_type === "Console") {
+        // Handle case variations in source names
+        const normalizedSource = message.source.toUpperCase();
+        if (normalizedSource.includes("COORDINATOR")) {
+          console.log("[Frontend] Appending coordinator log:", message);
+          appendCoordinatorLog(message);
+        } else if (normalizedSource.includes("ACCESS POINT") || normalizedSource.includes("AP")) {
+          console.log("[Frontend] Appending AP log:", message);
+          appendAPLog(message);
+        }
       }
     }
   };
-  logSocket.onopen = () => console.log("[Frontend] Connected to /ws/logs");
+
+  logSocket.onopen = () => {
+    console.log("[Frontend] Connected to /ws/logs");
+
+    // ✅ Subscribe to Console logs
+    logSocket.send(JSON.stringify({
+      subscribe: {
+        type: "Console",
+        source: null  // null = all sources (Coordinator, AP, etc.)
+      }
+    }));
+
+    // ✅ Subscribe to Metric logs (Performance)
+    logSocket.send(JSON.stringify({
+      subscribe: {
+        type: "Metric",
+        source: null
+      }
+    }));
+  };
+
 }

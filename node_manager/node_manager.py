@@ -21,6 +21,7 @@ import lib.global_config as cfg
 from lib.helper_functions import *
 import lib.global_constants as cts
 import lib.helper_functions as utils
+from pathlib import Path
 
 STRs = cts.String_Constants 
 
@@ -28,26 +29,17 @@ STRs = cts.String_Constants
 from argparse import ArgumentParser
 parser = ArgumentParser()
 parser.add_argument("-l", "--log-level",type=int, default=50, help="set logging level [10, 20, 30, 40, 50]")
-# parser.add_argument("-n", "--num-id",type=int, default=50, help="sequential uniq numeric id for node identification")
 args = parser.parse_args()
 
 
 PROGRAM_LOG_FILE_NAME = './logs/program.log'
 os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
 logger = logging.getLogger('SN_Logger')
-
 # this part handles logging to console and to a file for debugging purposes
 log_formatter =  logging.Formatter("Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
-
-# log_file_handler = logging.FileHandler(PROGRAM_LOG_FILE_NAME, mode='w')
-# log_file_handler.setLevel(args.log_level)
-# log_file_handler.setFormatter(log_formatter)
-
 log_console_handler = logging.StreamHandler(sys.stdout)  # (sys.stdout)
 # log_console_handler.setLevel(args.log_level)
 log_console_handler.setFormatter(log_formatter)
-
-
 logger.setLevel(args.log_level)
 # logger.addHandler(log_file_handler)
 logger.addHandler(log_console_handler)
@@ -55,15 +47,11 @@ logger.addHandler(log_console_handler)
 
 
 DEFAULT_IFNAME = 'wlan0'
-
 loopback_if = 'lo:0'
 NODE_TYPE = 'SN'
 THIS_NODE_UUID = utils.generate_uuid_from_lo(loopback_if, NODE_TYPE)
-
 print('Assigned Node UUID:', THIS_NODE_UUID)
-
 ACCESS_POINT_IP = ''
-
 q_to_coordinator = queue.Queue()
 q_to_mgr = queue.Queue()
 
@@ -81,6 +69,118 @@ gb_swarmNode_config = {
 }
 
 last_request_id = 0
+
+# --- Heartbeat Monitor status file config + helpers ---
+def resolve_state_base_dir():
+    # Allow override for testing or special setups
+    override = os.environ.get("SE_SWARM_STATE_FILE")
+    if override:
+        p = Path(override)
+        return p.parent, p
+
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        base = Path("/home") / sudo_user
+    else:
+        # Fallbacks if not running under sudo
+        env_user = os.environ.get("LOGNAME") or os.environ.get("USER")
+        if env_user and env_user != "root" and (Path("/home") / env_user).exists():
+            base = Path("/home") / env_user
+        else:
+            base = Path.home()  # last resort
+
+    dir_ = base / "smartedge" / "node_manager" / "heartbeat"
+    file_ = dir_ / "swarm_status.json"
+    return dir_, file_
+
+SWARM_STATE_DIR, SWARM_STATE_FILE = resolve_state_base_dir()
+
+DEFAULT_PUBKEY_PORT = 5007
+DEFAULT_HB_PORT = 5008
+DEFAULT_HB_INTERVAL = 1.0
+SWARM_CIDR = os.environ.get("SE_SWARM_CIDR", "10.1.0.0/24")
+
+def atomic_write_json(path, data: dict):
+    path = Path(path)
+    os.makedirs(path.parent, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+logger.info(f"[HB] Using swarm status file at: {SWARM_STATE_FILE}")
+
+def handle_successful_join(config_data: dict, ap_address: tuple, client_id: str = None):
+    if client_id is None:
+        client_id = THIS_NODE_UUID
+
+    # pull VETH1_VIP
+    veth1_ip = (config_data.get(STRs.VETH1_VIP.name)
+                if hasattr(STRs, "VETH1_VIP") else config_data.get("VETH1_VIP"))
+    if not veth1_ip:
+        logger.warning("[HB] SET_CONFIG missing VETH1_VIP; marking joined:false.")
+        handle_leave_event()
+        return
+
+    try:
+        ip_obj = ipaddress.ip_address(veth1_ip)
+        swarm_net = ipaddress.ip_network(SWARM_CIDR, strict=False)   # e.g. "10.1.0.0/24"
+    except Exception as e:
+        logger.error(f"[HB] Invalid IP or CIDR (VETH1_VIP={veth1_ip}, SWARM_CIDR={SWARM_CIDR}): {e}. Marking joined:false.")
+        handle_leave_event()
+        return
+
+    if ip_obj not in swarm_net:
+        logger.info(f"[HB] VETH1_VIP {veth1_ip} NOT in swarm {SWARM_CIDR}. Marking joined:false.")
+        handle_leave_event()
+        return
+
+    # In swarm → joined:true
+    ap_swarm_ip = None
+    for key in ("AP_SWARM_IP", "HB_DST_IP", "AP_VIP"):
+        if key in config_data and config_data[key]:
+            ap_swarm_ip = config_data[key]
+            break
+
+    if not ap_swarm_ip:
+        ap_swarm_ip = ap_address[0]
+        logger.warning("[HB] AP swarm IP not provided; TEMP fallback to physical AP IP. "
+                       "Please include 'AP_SWARM_IP' or 'HB_DST_IP' in SET_CONFIG.")
+
+    write_swarm_status_join(
+        ap_swarm_ip=ap_swarm_ip,
+        client_id=client_id,
+        pubkey_tcp_port=DEFAULT_PUBKEY_PORT,
+        hb_udp_port=DEFAULT_HB_PORT,
+        hb_interval=DEFAULT_HB_INTERVAL
+    )
+
+
+
+def handle_leave_event():
+    """Called on go_away or Wi-Fi disconnect. Writes joined=false status."""
+    state = {"joined": False}
+    atomic_write_json(SWARM_STATE_FILE, state)
+    logger.debug("[HB] Wrote swarm leave status.")
+
+
+def write_swarm_status_join(ap_swarm_ip, client_id, pubkey_tcp_port, hb_udp_port, hb_interval):
+    state = {
+        "joined": True,
+        "client_id": client_id,
+        "ap_swarm_ip": ap_swarm_ip,
+        "pubkey_tcp_port": pubkey_tcp_port,
+        "hb_udp_port": hb_udp_port,
+        "hb_interval": hb_interval
+    }
+    atomic_write_json(SWARM_STATE_FILE, state)
+    logger.debug(f"[HB] Wrote swarm join status: {state}")
+
+# ------------------------------------------------------
+
+
 
 
 def get_ip_from_arp_by_physical_mac(physical_mac):
@@ -152,6 +252,7 @@ def handle_communication():
                         install_swarmNode_config(config_data)
                     else:
                         install_config_no_update_vxlan(config_data)
+                    handle_successful_join(config_data, ap_address, client_id=THIS_NODE_UUID)
                 except Exception as e:
                     logger.error(repr(e))
                     return
@@ -168,6 +269,7 @@ def handle_communication():
                 time.sleep(1)
                 cli_command = f'nmcli connection up id {ap_ssid}'
                 subprocess.run(cli_command.split(), text=True)
+                handle_leave_event()
                 pass
             remote_socket.sendall(bytes( "OK!".encode() ))
             remote_socket.close()
@@ -250,8 +352,18 @@ def install_swarmNode_config(swarmNode_config):
     
 def exit_handler():
     logger.info('Handling exit')
-    return
-    handle_disconnection()
+    try:
+        # Notify heartbeat monitor to stop
+        handle_leave_event()
+    except Exception as e:
+        logger.error(f"Failed to write leave status in exit_handler: {e}")
+
+    try:
+        # Existing disconnection cleanup (currently stubbed)
+        handle_disconnection()
+    except Exception as e:
+        logger.error(f"Error during disconnection cleanup: {e}")
+
         
         
 def handle_disconnection():
@@ -294,6 +406,7 @@ def monitor_wifi_status():
         # logger.debug( '\noutput_line: ' + output_line )
         if output_line_as_word_array[1] == 'disconnected':
             logger.debug('Disconnected from WiFi')
+            handle_leave_event()
             # handle_disconnection()
         elif (output_line_as_word_array[1] == 'connected'):
             current_connection_timestamp = time.time()
@@ -311,22 +424,7 @@ def monitor_wifi_status():
             logger.debug(f'Connected to {process.stdout}')
 
             
-  
-# def handle_user_input():
-#     while True:
-#         user_input = input("Enter 1 to join, 2 to leave: ")
-#         if (user_input == '1'):
-#             print('sending join request')
-#             send_join_request()
-#         elif (user_input == '2'):
-#             print('sending leave request')
-#             send_leave_request()
-#         elif (user_input== ''):
-#             print('\n')
-#             continue
-#         else:
-#             print('wrong input')
-#         time.sleep(1)
+
 
 def main():
     print('program started')

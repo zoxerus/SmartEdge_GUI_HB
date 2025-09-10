@@ -45,22 +45,22 @@ import threading
 
 
 
-def handle_client(client_socket, address):
-    try:
-        while True:
-            data = client_socket.recv(1500)  # Receive data (max 1024 bytes)
-            if not data:
-                break  # Exit loop if no data received (client disconnected)
+# def handle_client(client_socket, address):
+#     try:
+#         while True:
+#             data = client_socket.recv(1500)  # Receive data (max 1024 bytes)
+#             if not data:
+#                 break  # Exit loop if no data received (client disconnected)
 
-            message = data.decode('utf-8')
-            print(f"{message}")
+#             message = data.decode('utf-8')
+#             print(f"{message}")
 
-    except Exception as e:
-        print(f"Error handling client {address}: {e}")
+#     except Exception as e:
+#         print(f"Error handling client {address}: {e}")
     
-    finally:
-        print(f"[*] Closing connection from {address}")
-        client_socket.close()  # Close client socket
+#     finally:
+#         print(f"[*] Closing connection from {address}")
+#         client_socket.close()  # Close client socket
 
 def start_server(host="0.0.0.0", port=5000):
     """Starts a multi-client TCP server."""

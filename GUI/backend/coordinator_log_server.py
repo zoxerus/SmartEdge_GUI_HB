@@ -1,4 +1,3 @@
-# coordinator_log_server.py
 
 import asyncio
 import uvicorn
@@ -10,13 +9,20 @@ from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
 from collections import deque
 from cassandra.query import dict_factory
-#from lib.database_comms import get_session
 from cassandra.cluster import Cluster
-#from datetime import datetime, timedelta
 from fastapi import Request
 import subprocess
 import os
 import json
+from log_parser import parse_log_line
+from collections import defaultdict
+from lib.logger_utils import get_logger
+from fastapi import Body
+
+# Organized structured log buffers
+logs_by_type_and_source = defaultdict(lambda: defaultdict(lambda: deque(maxlen=MAX_LOG_BUFFER_SIZE)))
+logger_snapshot = get_logger("Database", "Snapshot")
+
 
 # === Config ===
 TCP_LOG_PORT = 5000
@@ -26,7 +32,7 @@ MAX_LOG_BUFFER_SIZE = 1000
 # === State ===
 app = FastAPI()
 log_buffer = deque(maxlen=MAX_LOG_BUFFER_SIZE)
-active_websocket = None
+
 log_buffer_lock = asyncio.Lock()
 websocket_lock = asyncio.Lock()
 
@@ -34,6 +40,25 @@ websocket_lock = asyncio.Lock()
 BASE_DIR = os.path.dirname(__file__)
 FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, "../frontend"))
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+
+
+class WebSocketClient:
+    def __init__(self, websocket):
+        self.websocket = websocket
+        self.filters = {"type": None, "source": None}
+
+def matches_filter(entry, filters):
+    if not filters:
+        return True
+    if filters["type"] and entry.get("type") != filters["type"]:
+        return False
+    if filters["source"] and entry.get("source") != filters["source"]:
+        return False
+    return True
+
+active_websocket: WebSocketClient | None = None
+
 
 @app.get("/fetch-db")
 async def manual_db_fetch():
@@ -57,32 +82,34 @@ async def websocket_log_stream(websocket: WebSocket):
     await websocket.accept()
     print("[WebSocket] GUI client connected")
 
-    async with websocket_lock:
-        active_websocket = websocket
+    client = WebSocketClient(websocket)
 
+    async with websocket_lock:
+        active_websocket = client
+
+    # Send historical logs matching filter
     async with log_buffer_lock:
         for entry in log_buffer:
-            try:
-                json_payload = json.dumps({
-                    "type": "log",
-                    "source": entry["source"],
-                    "message": entry["message"]
-                })
-                await websocket.send_text(json_payload)
-            except Exception as e:
-                print(f"[WebSocket] Error sending buffered log: {e}")
-                break
+            if matches_filter(entry, client.filters):
+                await websocket.send_text(json.dumps(entry))
 
-    #async with websocket_lock:
-        #active_websocket = websocket
     try:
         while True:
-            await websocket.receive_text()  # Keep alive
+            msg = await websocket.receive_text()
+            try:
+                parsed = json.loads(msg)
+                if isinstance(parsed, dict) and "subscribe" in parsed:
+                    client.filters["type"] = parsed["subscribe"].get("type")
+                    client.filters["source"] = parsed["subscribe"].get("source")
+                    print(f"[WebSocket] Client updated filters: {client.filters}")
+            except Exception as e:
+                print(f"[WebSocket] Failed to parse message: {e}")
     except WebSocketDisconnect:
         print("[WebSocket] GUI client disconnected")
         async with websocket_lock:
-            if active_websocket == websocket:
+            if active_websocket == client:
                 active_websocket = None
+
 
 @app.websocket("/ws/db")
 async def websocket_db_stream(websocket: WebSocket):
@@ -146,29 +173,41 @@ def get_swarm_members(table_name: str):
         return []
 
 
+def infer_log_source(line: str) -> str:
+    if "Access Point" in line or "AP" in line:
+        return "Access Point"
+    elif "Coordinator" in line:
+        return "Coordinator"
+    return "UNKNOWN"
+
+
 async def handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     addr = writer.get_extra_info("peername")
     print(f"[TCP] Connection from {addr}")
     try:
-        buffer = ""
         while True:
             data = await reader.readline()
             if not data:
-                if buffer:
-                    await add_log(buffer.strip())
                 break
 
             line = data.decode().strip()
-            print(f"[DEBUG] Raw TCP log received: {repr(line)}")
+            if not line:  # Skip empty lines
+                continue
 
-            # If this line looks like a new log entry (starts with APxxxxxx or COxxxxxx timestamp ...)
-            if line.startswith("AP") or line.startswith("CO"):
-                if buffer:
-                    await add_log(buffer.strip())  # flush previous
-                buffer = line
+            print(f"[DEBUG] Raw TCP log received: {repr(line)}")
+            
+            # Try to parse as structured log
+            parsed = parse_log_line(line)
+            if parsed:
+                await add_log_entry(parsed)
             else:
-                # continuation of previous log (likely the message)
-                buffer += "\n" + line
+                # Treat as raw Console log
+                await add_log_entry({
+                    "type": "Console",
+                    "source": "Access Point" if "Access Point" in line else "Coordinator",
+                    "message": line
+                })
+
     except Exception as e:
         print(f"[TCP] Error with {addr}: {e}")
     finally:
@@ -177,46 +216,49 @@ async def handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.Stream
         await writer.wait_closed()
 
 
-async def add_log(log_line: str):
-    if log_line.startswith("AP"):
-        source = "AP"
-    elif log_line.startswith("CO"):
-        source = "COORDINATOR"
-    else:
-        source = "UNKNOWN"
+async def add_log_entry(entry: dict):
+    print("[DEBUG] Parsed log entry:", entry)
+    log_type = entry.get("type", "Console")
+    source = entry.get("source", "UNKNOWN").upper()
 
-    entry = {
-        "source": source,
-        "message": log_line
-    }
+    # Store in per-source/type buffer
+    logs_by_type_and_source[log_type][source].append(entry)
 
+    # Still add to flat buffer for legacy GUI stream
     async with log_buffer_lock:
         log_buffer.append(entry)
 
-    await send_log_to_websocket(log_line)
+    # Send over WebSocket
+    await send_log_to_websocket(entry)
 
 
-
-async def send_log_to_websocket(log_message: str):
-    """Sends a log message to the connected GUI client if available."""
+async def send_log_to_websocket(entry: dict):
     global active_websocket
     async with websocket_lock:
         if active_websocket:
             try:
-                # Tag source based on log content
-                if log_message.startswith("AP"):
-                    source = "AP"
-                elif log_message.startswith("CO"):
-                    source = "COORDINATOR"
-                else:
-                    source = "UNKNOWN"
+                #if matches_filter(entry, active_websocket.filters):
+                if entry.get("type") in ["Console", "Metric"]: 
+                    raw_source = entry.get("source", "UNKNOWN").upper()
 
-                json_payload = json.dumps({
-                    "type": "log",
-                    "source": source,
-                    "message": log_message
-                })
-                await active_websocket.send_text(json_payload)
+                    # Normalize to frontend-expected values
+                    if raw_source == "ACCESS POINT":
+                        normalized_source = "AP"
+                    elif raw_source == "COORDINATOR":
+                        normalized_source = "COORDINATOR"
+                    else:
+                        normalized_source = raw_source  # Fallback
+
+                    payload = {
+                        "type": "log",
+                        "log_type": entry.get("type", "Console"),
+                        "source": normalized_source,
+                        "message": entry.get("message")
+                    }
+
+                    print(f"[WebSocket] Sending log to frontend: {payload}")
+                    await active_websocket.websocket.send_text(json.dumps(payload))
+
             except Exception as e:
                 print(f"[WebSocket] Error sending log: {e}")
                 active_websocket = None
@@ -241,7 +283,34 @@ async def start_tcp_server():
 async def periodic_db_fetch():
     while True:
         await fetch_and_broadcast_data()
+        await asyncio.sleep(1)
+
+async def send_db_snapshot():
+    while True:
+        try:
+            cluster = Cluster(["127.0.0.1"])
+            session = cluster.connect("ks_swarm")
+            session.row_factory = dict_factory
+
+            tables = ["art"] + [
+                row["table_name"]
+                for row in session.execute("SELECT table_name FROM system_schema.tables WHERE keyspace_name = 'ks_swarm'")
+                if row["table_name"].startswith("swarm_table")
+            ]
+
+            snapshot = {}
+
+            for table in tables:
+                rows = session.execute(f"SELECT * FROM {table}")
+                snapshot[table] = [dict(row) for row in rows]
+
+            logger_snapshot.info(json.dumps(snapshot, default=str))
+
+        except Exception as e:
+            logger_snapshot.error(f"Failed to fetch DB snapshot: {e}")
+
         await asyncio.sleep(5)
+
 
 @app.post("/request-join")
 async def request_join(request: Request):
@@ -300,6 +369,66 @@ async def request_leave(request: Request):
         return {"success": False, "error": str(e)}
 
 
+@app.post("/start/coordinator")
+async def start_coordinator():
+    try:
+        subprocess.Popen(
+            "cd /home/Coordinator/smartedge_GUI && source .venv/bin/activate && source run.sh co 10 > coord.log 2>&1 &",
+            shell=True,
+            executable="/bin/bash"
+        )
+        return {"message": "Coordinator started"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/stop/coordinator")
+async def stop_coordinator():
+    try:
+        # This kills the python process running coordinator.py
+        result = subprocess.run(
+            "sudo /usr/bin/pkill -f coordinator.py > stop.log 2>&1 &",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            return {"error": f"Coordinator not stopped correctly. {result.stderr.strip()}"}
+        return {"message": "Coordinator stopped"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+
+@app.post("/start/ap")
+async def start_access_point():
+    try:
+        result = subprocess.Popen(
+            "ssh ap1@10.30.2.151 'cd /home/ap1/smartedge && source .venv/bin/activate && source run.sh ap 10 > ap.log 2>&1 &'",
+            shell=True,
+            executable="/bin/bash"
+        )
+        return {"message": "Access Point started"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/stop/ap")
+async def stop_ap():
+    try:
+        subprocess.run(
+            "ssh ap1@10.30.2.151 'sudo pkill -f \"python.*ap_manager.py\"'",
+            shell=True,
+            executable="/bin/bash",
+            check=True
+        )
+        return {"message": "Access Point stopped"}
+    except subprocess.CalledProcessError as e:
+        return {"error": f"pkill failed: {e.stderr or str(e)}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 
 
 # === Main startup ===
@@ -307,7 +436,10 @@ async def main():
     print("[System] Starting Coordinator Log Server...")
     asyncio.create_task(start_tcp_server())
     asyncio.create_task(periodic_db_fetch())
+    
     asyncio.create_task(fetch_and_broadcast_data())
+    asyncio.create_task(send_db_snapshot())
+
     config = uvicorn.Config(app, host="0.0.0.0", port=HTTP_PORT, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
