@@ -212,7 +212,7 @@ async def offboard_node(host_id, uuid, ap_id, node_vip, ap_port, available_nodes
         return
             
 
-async def onboard_node(host_id, uuid, ap_id, node_s0_ip, ap_port, available_nodes, lock):
+async def onboard_node(host_id, uuid, ap_id, node_s0_ip, ap_port, available_nodes, lock, heartbeat=False):
     SN_UUID = uuid
     logger.debug(f'Accepted Node {SN_UUID} in Swarm')
     
@@ -230,7 +230,10 @@ async def onboard_node(host_id, uuid, ap_id, node_s0_ip, ap_port, available_node
         STRs.VETH1_VMAC.name: station_vmac,
         STRs.SWARM_ID.name: 1,
         STRs.COORDINATOR_VIP.name: cfg.coordinator_vip,
-        STRs.COORDINATOR_TCP_PORT.name: cfg.coordinator_tcp_port
+        STRs.COORDINATOR_TCP_PORT.name: cfg.coordinator_tcp_port,
+        "heartbeat": heartbeat,
+        "COORDINATOR_PUBKEY_PORT": 5007,  
+        "COORDINATOR_HB_PORT": 5008 
     }
     
     config_message = json.dumps(swarmNode_config)
@@ -238,7 +241,7 @@ async def onboard_node(host_id, uuid, ap_id, node_s0_ip, ap_port, available_node
     logger.debug(f'Sending {config_message}')
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            # s.settimeout(5)
+            print(f"[DEBUG] Connecting to Node {SN_UUID} at {node_s0_ip}:{cfg.node_manager_tcp_port}")
             s.connect((node_s0_ip, cfg.node_manager_tcp_port))
             s.sendall( bytes( config_message.encode() ) )
             logger.debug(f'sent {config_message} to {SN_UUID}')
@@ -378,8 +381,9 @@ async def handle_ac_communication(ac_socket):
                                 node_s0_ip=node_s0_ip, 
                                 ap_port=ap_port, 
                                 available_nodes=available_nodes, 
-                                lock=lock) 
-                    )
+                                lock=lock,
+                                heartbeat=ac_message_in_json.get('heartbeat', False) 
+                    ))
                 
                 tasks.append(task)
         

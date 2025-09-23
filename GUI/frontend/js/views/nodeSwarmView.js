@@ -24,6 +24,13 @@ export function loadNodeSwarmView() {
           <select id="swarm-select" disabled>
             <option value="">-- Choose a swarm --</option>
           </select>
+          <div style="margin-top:6px;">
+            <label for="heartbeat-select">Enable Heartbeat:</label>
+            <select id="heartbeat-select" style="margin-left:6px;">
+              <option value="true">On</option>
+              <option value="false">Off</option>
+            </select>
+          </div>
           <button id="ask-join-btn" disabled class="ask-btn">Ask to Join</button>
         </div>
 
@@ -185,7 +192,8 @@ export function loadNodeSwarmView() {
         },
         body: JSON.stringify({
           uuid: selectedUuid,
-          swarm: selectedSwarmTable
+          swarm: selectedSwarmTable,
+          heartbeat: document.getElementById("heartbeat-select").value === "true"
         })
       });
 

@@ -18,6 +18,14 @@ from log_parser import parse_log_line
 from collections import defaultdict
 from lib.logger_utils import get_logger
 from fastapi import Body
+from fastapi import FastAPI, HTTPException
+from cassandra.cluster import Cluster
+from cassandra.query import dict_factory
+
+import heartbeat_api
+
+
+
 
 # Organized structured log buffers
 logs_by_type_and_source = defaultdict(lambda: defaultdict(lambda: deque(maxlen=MAX_LOG_BUFFER_SIZE)))
@@ -31,6 +39,8 @@ MAX_LOG_BUFFER_SIZE = 1000
 
 # === State ===
 app = FastAPI()
+app.include_router(heartbeat_api.router)
+
 log_buffer = deque(maxlen=MAX_LOG_BUFFER_SIZE)
 
 log_buffer_lock = asyncio.Lock()
@@ -171,6 +181,32 @@ def get_swarm_members(table_name: str):
     except Exception as e:
         print(f"[/swarms/{table_name}] Error:", e)
         return []
+
+@app.get("/fetch-heartbeat-characteristics/{node_uuid}")
+def fetch_heartbeat_characteristics(node_uuid: str):
+    try:
+        cluster = Cluster(["127.0.0.1"])   # adjust host if needed
+        session = cluster.connect("swarm")  # your keyspace
+        session.row_factory = dict_factory
+
+        # Query node_keys
+        row_key = session.execute(
+            "SELECT * FROM node_keys WHERE node_uuid = %s", [node_uuid]
+        ).one()
+
+        # Query heartbeat_state
+        row_state = session.execute(
+            "SELECT * FROM heartbeat_state WHERE node_uuid = %s", [node_uuid]
+        ).one()
+
+    except Exception as e:
+        print("[/fetch-heartbeat-characteristics] Error:", e)
+        return {"node_keys": None, "heartbeat_state": None}
+
+    return {
+        "node_keys": row_key if row_key else None,
+        "heartbeat_state": row_state if row_state else None,
+    }
 
 
 def infer_log_source(line: str) -> str:
@@ -317,6 +353,7 @@ async def request_join(request: Request):
     data = await request.json()
     uuid = data.get("uuid")
     swarm = data.get("swarm")
+    heartbeat = data.get("heartbeat", False)
 
     if not uuid:
         return {"success": False, "error": "No UUID provided"}
@@ -327,7 +364,7 @@ async def request_join(request: Request):
 
     try:
         result = subprocess.run(
-            ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_join.py", uuid],
+            ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_join.py", uuid, "--swarm", swarm, "--heartbeat", str(heartbeat).lower() ],
             capture_output=True,
             text=True,
             timeout=20  # Optional: timeout in seconds

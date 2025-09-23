@@ -415,3 +415,9 @@ button:disabled {
     height: 200px;
   }
 }
+
+/* add to /static/css/style.css if needed */
+.node-container { display: flex; gap: 20px; align-items: flex-start; }
+.node-list-box { flex: 1; }
+.node-details { flex: 2; }
+.console-box { background:#000; color:#7CFC00; padding:10px; height:220px; overflow:auto; border-radius:6px; }

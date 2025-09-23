@@ -5,6 +5,7 @@ import { loadHomeView } from './views/homeView.js';
 import { loadLogView } from './views/logView.js';
 import { loadDBView } from './views/dbView.js';
 import { loadNodeSwarmView } from './views/nodeSwarmView.js';
+import { loadHeartbeatView } from './views/heartbeatView.js';
 import { loadPerformanceView } from './views/performanceView.js';
 
 
@@ -30,6 +31,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-node-swarm").addEventListener("click", () => {
     loadNodeSwarmView(); // ✅ consistent style
+  });
+
+  document.getElementById("btn-heartbeat").addEventListener("click", () => {
+    loadHeartbeatView();
   });
 
   document.getElementById("btn-performance").addEventListener("click", () => {
