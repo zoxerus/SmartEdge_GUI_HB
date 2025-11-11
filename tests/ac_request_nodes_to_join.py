@@ -10,30 +10,52 @@ str_NODE_LEAVE_LIST = 'nll'
 str_NODE_IDS = 'nids'
 str_SWARM = 'swarm'
 str_HEARTBEAT = 'heartbeat'
+str_HB_LENGTH = 'hb_length'
+str_HB_WINDOW = 'hb_window'
+str_HB_INTERVAL = 'hb_interval'
 
 # === STEP 1: Parse arguments ===
 parser = argparse.ArgumentParser(description="Send join request to Coordinator")
+
 parser.add_argument("uuid", help="UUID of the node to join")
 parser.add_argument("--swarm", required=True, help="Target swarm table name")
+
+# Heartbeat toggle
 parser.add_argument("--heartbeat", choices=["true", "false"], default="false", help="Enable heartbeat for this node")
+
+# New heartbeat parameters (optional, only used if --heartbeat true)
+parser.add_argument("--length", type=int, help="Heartbeat chain length (e.g., 100, 500, 1000, ...)")
+parser.add_argument("--window", type=int, help="Heartbeat verification window (e.g., 2, 3, 4, 5)")
+parser.add_argument("--interval", type=float, help="Heartbeat interval in seconds (e.g., 1, 2, 3)")
+
 args = parser.parse_args()
 
 uuid = args.uuid
 swarm = args.swarm
-heartbeat = args.heartbeat.lower() == "true"   # convert to boolean
+heartbeat_enabled = args.heartbeat.lower() == "true"
 
 # === STEP 2: Build message with dynamic UUID, swarm, and heartbeat ===
 message = {
     str_TYPE: str_NODE_JOIN_LIST,
     str_NODE_IDS: [uuid],
     str_SWARM: swarm,
-    str_HEARTBEAT: heartbeat
+    str_HEARTBEAT: heartbeat_enabled
 }
 
+# Add heartbeat parameters only if heartbeat is enabled
+if heartbeat_enabled:
+    if args.length is not None:
+        message[str_HB_LENGTH] = args.length
+    if args.window is not None:
+        message[str_HB_WINDOW] = args.window
+    if args.interval is not None:
+        message[str_HB_INTERVAL] = args.interval
+
+# Serialize
 str_message = json.dumps(message)
 
 # === STEP 3: Send message to Coordinator over TCP ===
-host = 'localhost'
+host = '0.0.0.0'
 port = 9999
 
 try:
@@ -45,6 +67,7 @@ try:
         print("✅ Join request accepted. Response:")
         print(json.dumps(data_json, indent=2))
         sys.exit(0)
+
 except Exception as e:
     print(f"❌ Socket error: {e}")
     sys.exit(1)

@@ -236,6 +236,31 @@ body {
   cursor: pointer;
 }
 
+#ask-leave-btn {
+  background-color: #dc3545;     /* red tone */
+  color: white;
+  font-weight: 600;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.25s ease, transform 0.1s ease;
+}
+
+#ask-leave-btn:hover:not(:disabled) {
+  background-color: #c82333;     /* darker red on hover */
+  transform: translateY(-1px);   /* subtle lift */
+}
+
+#ask-leave-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+#ask-leave-btn:disabled {
+  background-color: #aaa;
+  cursor: not-allowed;
+}
+
 
 /* Log box */
 #node-log {

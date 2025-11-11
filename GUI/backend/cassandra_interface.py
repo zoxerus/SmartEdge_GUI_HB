@@ -10,6 +10,9 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from lib import database_comms as db
+from cassandra.cluster import Cluster
+from cassandra.query import dict_factory
+from websocket_handler import broadcast_to_db_clients
 
 CASSANDRA_HOST = "127.0.0.1"
 KEYSPACE = "ks_swarm"
@@ -24,23 +27,60 @@ def clean_data(obj):
         return obj.isoformat()
     return obj
 
-async def fetch_and_broadcast_data():
-    cluster = Cluster([CASSANDRA_HOST])
-    session = cluster.connect()
-    session.set_keyspace(KEYSPACE)
 
-    for table in TABLES:
+
+async def fetch_and_broadcast_data(target_table: str | None = None):
+    """
+    Fetch data from Cassandra and broadcast via WebSocket.
+    Always broadcasts both 'art' and 'swarm_table' to ensure GUI stays in sync.
+    If Cassandra ever has multiple swarm tables, it will include them automatically.
+    """
+    try:
+        cluster = Cluster([CASSANDRA_HOST])
+        session = cluster.connect(KEYSPACE)
+        session.row_factory = dict_factory
+
+        # Always include both main tables; dynamically add other swarm tables if any
+        tables = ["art", "swarm_table"]
+
+        # Also include any dynamically created swarm tables, if they exist
         try:
-            rows = session.execute(f"SELECT * FROM {table}")
-            data = [dict(row._asdict()) for row in rows]
-            cleaned_data = clean_data(data)
-            await broadcast_message(json.dumps({
-                "type": "db",
-                "table": table,
-                "data": cleaned_data
-            }))
+            extra_tables = [
+                row["table_name"]
+                for row in session.execute(
+                    "SELECT table_name FROM system_schema.tables WHERE keyspace_name = %s",
+                    (KEYSPACE,),
+                )
+                if row["table_name"].startswith("swarm_table") and row["table_name"] not in tables
+            ]
+            tables.extend(extra_tables)
         except Exception as e:
-            print(f"[Cassandra Error] {e}")
+            print(f"[DB Broadcast] Warning: couldn't enumerate system tables: {e}")
+
+        print(f"[DB Broadcast] Triggered for target_table={target_table}, fetching {tables}")
+
+        for table in tables:
+            try:
+                rows = session.execute(f"SELECT * FROM {table}")
+                data = [dict(row) for row in rows]
+
+                await broadcast_to_db_clients({
+                    "type": "db_snapshot",
+                    "table": table,
+                    "data": data
+                })
+
+                print(f"[DB Broadcast] Sent snapshot for {table} ({len(data)} rows)")
+
+            except Exception as e:
+                print(f"[DB Broadcast] Error fetching table {table}: {e}")
+
+        print(f"[DB Broadcast] Successfully broadcast {len(tables)} table(s): {tables}")
+
+    except Exception as e:
+        print(f"[DB Broadcast] Fatal error fetching data: {e}")
+
+
 
 
 def query_art_nodes():

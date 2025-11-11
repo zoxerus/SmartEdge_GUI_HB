@@ -213,10 +213,15 @@ async function loadNodeDetails(uuid) {
 
 function startHeartbeatLogStream() {
   const logBox = document.getElementById("heartbeatLogs");
-  if (!logBox) {
-    console.warn("HeartbeatView: #heartbeatLogs not found, aborting log stream setup");
+  const nodeList = document.getElementById("nodeList");
+  const selectedUUID = nodeList?.value;
+
+  if (!selectedUUID) {
+    alert("Please select a node first!");
     return;
   }
+
+  if (!logBox) return;
 
   if (hbWS) {
     try { hbWS.close(); } catch {}
@@ -224,30 +229,27 @@ function startHeartbeatLogStream() {
   }
 
   const scheme = location.protocol === "https:" ? "wss://" : "ws://";
-  const url = scheme + location.host + "/ws/heartbeat_logs";
+  const url = scheme + location.host + `/ws/heartbeat_logs/${selectedUUID}`;
 
   hbWS = new WebSocket(url);
 
   hbWS.onopen = () => {
     hbWSAttempts = 0;
-    if (logBox.textContent === "Waiting for logs...") logBox.textContent = "";
-    appendHeartbeatLog("[Connected to log server, waiting for logs...]");
+    logBox.textContent = "";
+    appendHeartbeatLog(`[Connected to ${selectedUUID} log stream...]`);
   };
 
   hbWS.onmessage = (ev) => appendHeartbeatLog(ev.data);
 
   hbWS.onclose = () => {
-    if (document.getElementById("heartbeatLogs")) {
-      appendHeartbeatLog("[Disconnected from log server]");
-    }
-    const delay = Math.min(10000, 1000 * Math.pow(2, hbWSAttempts++));
-    setTimeout(startHeartbeatLogStream, delay);
+    appendHeartbeatLog(`[Disconnected from ${selectedUUID} log stream]`);
   };
 
   hbWS.onerror = (err) => {
     console.error("WebSocket error:", err);
   };
 }
+
 
 
 export function appendHeartbeatLog(message) {

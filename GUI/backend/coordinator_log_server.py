@@ -2,7 +2,7 @@
 import asyncio
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from websocket_handler import connect_client, disconnect_client
+from websocket_handler import connect_client, disconnect_client, broadcast_to_db_clients
 from cassandra_interface import fetch_and_broadcast_data
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -21,9 +21,10 @@ from fastapi import Body
 from fastapi import FastAPI, HTTPException
 from cassandra.cluster import Cluster
 from cassandra.query import dict_factory
-
 import heartbeat_api
-
+import signal
+from fastapi import Body
+from cassandra_interface import fetch_and_broadcast_data
 
 
 
@@ -51,7 +52,8 @@ BASE_DIR = os.path.dirname(__file__)
 FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, "../frontend"))
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
-
+# Global tracked process (if any)
+_HB_PROCESS = None
 
 class WebSocketClient:
     def __init__(self, websocket):
@@ -68,6 +70,30 @@ def matches_filter(entry, filters):
     return True
 
 active_websocket: WebSocketClient | None = None
+
+
+
+
+@app.post("/trigger-db-update")
+async def trigger_db_update(payload: dict = Body(...)):
+    """
+    Called by Coordinator when a Cassandra table changes.
+    Triggers a selective re-fetch and WebSocket broadcast.
+    """
+    table = payload.get("table")
+
+    if not table:
+        return {"status": "error", "detail": "Missing 'table' field"}
+
+    try:
+        print(f"[DB Trigger] Received update request for table: {table}")
+        await fetch_and_broadcast_data(table)
+        return {"status": "ok", "table": table}
+    except Exception as e:
+        print(f"[DB Trigger] Error handling update for {table}: {e}")
+        return {"status": "error", "detail": str(e)}
+
+
 
 
 @app.get("/fetch-db")
@@ -130,7 +156,7 @@ async def websocket_db_stream(websocket: WebSocket):
             await websocket.receive_text()  # Keep alive
     except WebSocketDisconnect:
         print("[WebSocket] DB GUI client disconnected")
-        disconnect_client(websocket)
+        await disconnect_client(websocket)
 
 
 @app.get("/art-nodes")
@@ -140,7 +166,7 @@ def get_art_nodes():
         session = cluster.connect("ks_swarm")
         session.row_factory = dict_factory
 
-        rows = session.execute("SELECT uuid, current_ap FROM art")
+        rows = session.execute("SELECT uuid, current_swarm, current_ap, last_update FROM art")
     except Exception as e:
         print("[/art-nodes] Cassandra error:", e)
         return []
@@ -150,7 +176,9 @@ def get_art_nodes():
     for row in rows:
         result.append({
             "uuid": row.get("uuid"),
-            "swarm_id": row.get("current_ap")  # use 'current_ap' to match your DB
+            "swarm_id": row.get("current_swarm"),
+            "current_ap": row.get("current_ap"),
+            "last_update": row.get("last_update").isoformat() if row.get("last_update") else None  
         })
 
     return result
@@ -355,24 +383,43 @@ async def request_join(request: Request):
     swarm = data.get("swarm")
     heartbeat = data.get("heartbeat", False)
 
+    # New optional parameters
+    hb_length = data.get("hb_length")
+    hb_window = data.get("hb_window")
+    hb_interval = data.get("hb_interval")
+
     if not uuid:
         return {"success": False, "error": "No UUID provided"}
     if not swarm:
         return {"success": False, "error": "No swarm selected"}
 
-    print(f"[JOIN REQUEST] Node UUID: {uuid}, Target Swarm: {swarm}")
+    print(f"[JOIN REQUEST] Node UUID: {uuid}, Target Swarm: {swarm}, Heartbeat: {heartbeat}")
+
+    # --- Validate heartbeat parameters if heartbeat is enabled ---
+    args = ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_join.py", uuid, "--swarm", swarm]
+
+    if heartbeat:
+        print(f"[HEARTBEAT PARAMETERS] length={hb_length}, window={hb_window}, interval={hb_interval}")
+        args.extend([
+            "--heartbeat", "true",
+            "--length", str(hb_length),
+            "--window", str(hb_window),
+            "--interval", str(hb_interval)
+        ])
+    else:
+        args.extend(["--heartbeat", "false"])
 
     try:
         result = subprocess.run(
-            ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_join.py", uuid, "--swarm", swarm, "--heartbeat", str(heartbeat).lower() ],
+            args,
             capture_output=True,
             text=True,
-            timeout=20  # Optional: timeout in seconds
+            timeout=20  # seconds
         )
+
         print("[SCRIPT STDOUT]:", result.stdout)
         print("[SCRIPT STDERR]:", result.stderr)
         print("[SCRIPT RETURN CODE]:", result.returncode)
-
 
         if result.returncode != 0:
             return {"success": False, "error": result.stderr or "Script failed"}
@@ -380,11 +427,56 @@ async def request_join(request: Request):
         return {"success": True, "output": result.stdout.strip()}
 
     except Exception as e:
+        print("[ERROR] Exception while executing join script:", e)
         return {"success": False, "error": str(e)}
+
+
+@app.post("/stop-heartbeat-server")
+async def stop_heartbeat_server():
+    """
+    Stop the heartbeat_server.py process if running.
+    Prefer stopping the tracked process (_HB_PROCESS), but fall back to pkill.
+    """
+    global _HB_PROCESS
+    try:
+        # --- Case 1: Stop tracked process (if available) ---
+        if _HB_PROCESS and (_HB_PROCESS.poll() is None):
+            try:
+                os.killpg(os.getpgid(_HB_PROCESS.pid), signal.SIGTERM)
+            except Exception:
+                # fallback to direct terminate
+                _HB_PROCESS.terminate()
+            _HB_PROCESS = None
+            print("[HB-API] ✅ Heartbeat server stopped (tracked process).")
+            return {"success": True, "output": "Heartbeat server stopped successfully."}
+
+        # --- Case 2: Fallback — kill any running process by name ---
+        res = subprocess.run(
+            ["pkill", "-f", "heartbeat_server.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        if res.returncode == 0:
+            print("[HB-API] ✅ Heartbeat server stopped via pkill fallback.")
+            return {"success": True, "output": "Heartbeat server process stopped (fallback)."}
+        else:
+            print("[HB-API] ⚠️ No heartbeat server process found (already stopped).")
+            return {"success": True, "output": "No heartbeat server process found (already stopped)."}
+
+    except Exception as e:
+        print(f"[HB-API] ❌ Error stopping heartbeat server: {e}")
+        return {"success": False, "error": f"Failed to stop heartbeat server: {e}"}
 
 
 @app.post("/request-leave")
 async def request_leave(request: Request):
+    """
+    Handle leave requests from GUI.
+    Executes the leave script for the provided node UUID(s).
+    After successful removal, checks if swarm_table is empty.
+    If empty → automatically stops heartbeat_server.py.
+    """
     data = await request.json()
     node_ids = data.get("nids")
 
@@ -392,18 +484,45 @@ async def request_leave(request: Request):
         return {"success": False, "error": "No UUID provided"}
 
     try:
+        # --- Step 1: Run the leave script ---
         args = ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_leave.py"]
-        args.extend(node_ids)  # Pass UUIDs as CLI args
+        args.extend(node_ids)
 
         result = subprocess.run(args, capture_output=True, text=True, timeout=20)
 
         if result.returncode != 0:
             return {"success": False, "error": result.stderr or "Script failed"}
 
+        # --- Step 2: Wait briefly and check swarm_table count ---
+        await asyncio.sleep(1.0)  # allow DB to update
+        try:
+            session.set_keyspace("ks_swarm")
+            row = session.execute("SELECT COUNT(*) AS count FROM swarm_table;").one()
+            count = row["count"] if row and "count" in row else 0
+            print(f"[HB-API] Swarm count after leave = {count}")
+        except Exception as e:
+            print(f"[HB-API] ⚠️ Could not check swarm_table count: {e}")
+            count = -1
+
+        # --- Step 3: If swarm is empty, stop heartbeat server ---
+        if count == 0:
+            print("[HB-API] 🟡 Swarm is empty → stopping heartbeat_server.py ...")
+            try:
+                stop_result = await stop_heartbeat_server()
+                msg = stop_result.get("output", "Heartbeat server stopped.") if isinstance(stop_result, dict) else "Heartbeat server stopped."
+                return {"success": True, "output": f"{result.stdout.strip()} | {msg}"}
+            except Exception as e:
+                print(f"[HB-API] ⚠️ Failed to stop heartbeat server automatically: {e}")
+                return {"success": True, "output": f"{result.stdout.strip()} | Warning: failed to stop heartbeat server."}
+
+        # --- Step 4: Swarm not empty → normal success ---
         return {"success": True, "output": result.stdout.strip()}
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"[HB-API] ❌ Error in request_leave: {e}")
+        return {"success": False, "error": str(e)} 
+
+
 
 
 @app.post("/start/coordinator")
@@ -466,13 +585,21 @@ async def stop_ap():
         return {"error": str(e)}
 
 
+@app.post("/start-heartbeat-server")
+async def start_heartbeat_server(data: dict):
+    lost_limit = data.get("lost_limit", 3)
+    subprocess.Popen(
+        ["python3", "/home/Coordinator/smartedge_GUI/coordinator/heartbeat_server.py", str(lost_limit)]
+    )
+    return {"success": True, "output": f"Server started with lost_limit={lost_limit}"}
+
 
 
 # === Main startup ===
 async def main():
     print("[System] Starting Coordinator Log Server...")
     asyncio.create_task(start_tcp_server())
-    asyncio.create_task(periodic_db_fetch())
+    #asyncio.create_task(periodic_db_fetch())
     
     asyncio.create_task(fetch_and_broadcast_data())
     asyncio.create_task(send_db_snapshot())

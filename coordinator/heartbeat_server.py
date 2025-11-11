@@ -18,9 +18,22 @@ from cassandra import ConsistencyLevel
 BIND_IP           = os.environ.get("SE_CO_BIND_IP", "0.0.0.0")   # e.g., "10.1.255.254" in prod
 TCP_PORT          = int(os.environ.get("SE_CO_PUBKEY_TCP_PORT", "5007"))
 UDP_PORT          = int(os.environ.get("SE_CO_HB_UDP_PORT", "5008"))
-HEARTBEAT_TIMEOUT = int(os.environ.get("SE_CO_HB_TIMEOUT", "7"))  # seconds
-LOGFILE           = os.environ.get("SE_CO_LOG", "./logs/coordinator_hb_server.log")
+#HEARTBEAT_TIMEOUT = int(os.environ.get("SE_CO_HB_TIMEOUT", "7"))  # seconds
+LOGFILE           = os.environ.get("SE_CO_LOG", "/home/Coordinator/smartedge_GUI/coordinator/logs/coordinator_hb_server.log")
 STORE_DIR         = os.environ.get("SE_CO_HB_STORE", "./hb_store")  # optional: where to stash any files if needed
+
+# Allow override via CLI argument: python3 heartbeat_server.py <lost_limit>
+if len(sys.argv) > 1:
+    try:
+        HEARTBEAT_TIMEOUT = int(sys.argv[1])
+        print(f"[INFO] Using CLI heartbeat timeout: {HEARTBEAT_TIMEOUT}s")
+    except ValueError:
+        print(f"[WARN] Invalid heartbeat timeout argument '{sys.argv[1]}', using default.")
+        HEARTBEAT_TIMEOUT = int(os.environ.get("SE_CO_HB_TIMEOUT", "7"))
+else:
+    HEARTBEAT_TIMEOUT = int(os.environ.get("SE_CO_HB_TIMEOUT", "7"))  # seconds
+
+
 
 # Optional: notify another coordinator/service on DEAD
 NOTIFY_IP         = os.environ.get("SE_NOTIFY_IP", "")            # e.g., "10.30.2.153"
