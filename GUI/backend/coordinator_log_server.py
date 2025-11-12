@@ -1,4 +1,3 @@
-
 import asyncio
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -396,7 +395,7 @@ async def request_join(request: Request):
     print(f"[JOIN REQUEST] Node UUID: {uuid}, Target Swarm: {swarm}, Heartbeat: {heartbeat}")
 
     # --- Validate heartbeat parameters if heartbeat is enabled ---
-    args = ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_join.py", uuid, "--swarm", swarm]
+    args = ["python3", "../../tests/ac_request_nodes_to_join.py", uuid, "--swarm", swarm]
 
     if heartbeat:
         print(f"[HEARTBEAT PARAMETERS] length={hb_length}, window={hb_window}, interval={hb_interval}")
@@ -485,7 +484,7 @@ async def request_leave(request: Request):
 
     try:
         # --- Step 1: Run the leave script ---
-        args = ["python3", "/home/Coordinator/smartedge_GUI/tests/ac_request_nodes_to_leave.py"]
+        args = ["python3", "../../tests/ac_request_nodes_to_leave.py"]
         args.extend(node_ids)
 
         result = subprocess.run(args, capture_output=True, text=True, timeout=20)
@@ -589,7 +588,7 @@ async def stop_ap():
 async def start_heartbeat_server(data: dict):
     lost_limit = data.get("lost_limit", 3)
     subprocess.Popen(
-        ["python3", "/home/Coordinator/smartedge_GUI/coordinator/heartbeat_server.py", str(lost_limit)]
+        ["python3", "../../coordinator/heartbeat_server.py", str(lost_limit)]
     )
     return {"success": True, "output": f"Server started with lost_limit={lost_limit}"}
 
@@ -599,7 +598,7 @@ async def start_heartbeat_server(data: dict):
 async def main():
     print("[System] Starting Coordinator Log Server...")
     asyncio.create_task(start_tcp_server())
-    #asyncio.create_task(periodic_db_fetch())
+    # asyncio.create_task(periodic_db_fetch())
     
     asyncio.create_task(fetch_and_broadcast_data())
     asyncio.create_task(send_db_snapshot())

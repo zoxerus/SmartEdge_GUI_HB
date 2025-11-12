@@ -1,3 +1,8 @@
-sudo docker run --privileged --rm --net=host --volume $(pwd):$(pwd) --workdir $(pwd) -i -t --name bmv2smartedge -d p4jet
-sudo docker exec -d bmv2smartedge  pip install thrift
-sudo docker exec -d bmv2smartedge  simple_switch ./p4app/ap.json
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Please run this script as root or using sudo!"
+  exit 1
+fi
+
+screen -dmS bmv2 bash -c "simple_switch $(pwd)/p4app/ap.json"
+
+# screen -d -m sh -c "simple_switch $(pwd)/p4app/ap.json"

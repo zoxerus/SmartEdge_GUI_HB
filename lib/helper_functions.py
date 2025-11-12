@@ -4,6 +4,44 @@ import psutil
 import socket 
 import ipaddress
 import netifaces
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_interfaces():
+    """
+    Detects the default ethernet and Wi-Fi interfaces.
+
+    Returns:
+        dict: A dictionary with 'ethernet' and 'wifi' keys.
+              Values are the interface names (str) or None if not found.
+    """
+    interfaces = {'ethernet': None, 'wifi': None}
+    
+    try:
+        # Find default ethernet interface via the default gateway
+        interfaces['ethernet'] = netifaces.gateways()['default'][netifaces.AF_INET][1]
+        logger.debug(f"Found default interface {interfaces['ethernet']}")
+    except (KeyError, IndexError):
+        logger.warning("Could not determine default ethernet interface.")
+    except Exception as e:
+        logger.warning(f"An unexpected error occurred while detecting ethernet interface: {e}")
+
+    try:
+        # Find a Wi-Fi interface by checking for common prefixes
+        all_interfaces = psutil.net_if_addrs().keys()
+        # Note: This detection is not foolproof and might not work on all systems.
+        # Common prefixes for Wi-Fi interfaces are 'wl', 'wlp'.
+        wifi_interfaces = [iface for iface in all_interfaces if iface.startswith(('wl'))]
+        if wifi_interfaces:
+            interfaces['wifi'] = wifi_interfaces[0] # Return the first one found
+            logger.debug(f"Found wifi interface {interfaces['wifi']}")
+    except Exception as e:
+        logger.warning(f"An error occurred while detecting Wi-Fi interface: {e}")
+        
+    return interfaces
+
+
 
 def get_default_iface_name_linux():
     route = "/proc/net/route"

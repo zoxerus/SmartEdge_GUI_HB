@@ -14,7 +14,7 @@ from cassandra.cluster import Cluster
 from cassandra.query import dict_factory
 from websocket_handler import broadcast_to_db_clients
 
-CASSANDRA_HOST = "127.0.0.1"
+CASSANDRA_HOST = "0.0.0.0"
 KEYSPACE = "ks_swarm"
 TABLES = ["art", "swarm_table"]
 
@@ -36,7 +36,7 @@ async def fetch_and_broadcast_data(target_table: str | None = None):
     If Cassandra ever has multiple swarm tables, it will include them automatically.
     """
     try:
-        cluster = Cluster([CASSANDRA_HOST])
+        cluster = Cluster(contact_points=[CASSANDRA_HOST])
         session = cluster.connect(KEYSPACE)
         session.row_factory = dict_factory
 

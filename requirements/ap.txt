@@ -1,0 +1,6 @@
+aenum
+cassandra-driver
+psutil
+netifaces
+thrift==0.13.0
+requests

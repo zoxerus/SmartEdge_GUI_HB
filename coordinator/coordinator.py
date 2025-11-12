@@ -32,10 +32,10 @@ from argparse import ArgumentParser
 
 STRs = cts.String_Constants
 
-parser = ArgumentParser()
-parser.add_argument("-l", "--log-level",type=int, default=50, help="set logging level [10, 20, 30, 40, 50]")
-parser.add_argument("-n", "--num-id",type=int, default=50, help="sequential uniq numeric id for node identification")
-args = parser.parse_args()
+# parser = ArgumentParser()
+# parser.add_argument("-l", "--log-level",type=int, default=50, help="set logging level [10, 20, 30, 40, 50]")
+# parser.add_argument("-n", "--num-id",type=int, default=50, help="sequential uniq numeric id for node identification")
+# args = parser.parse_args()
 
 
 
@@ -77,39 +77,36 @@ class SocketStreamHandler(logging.StreamHandler):
             self.sock.close()
         super().close()
 
-loopback_if = 'lo:0'
+SELF_TYPE='CO'
+SELF_UUID = "null"
 
-## We use the lo:0 interface to generate the ID of the node
-loopback_if = 'lo:0'
-NODE_TYPE='CO'
-THIS_NODE_UUID = utils.generate_uuid_from_lo(loopback_if=loopback_if, node_type=NODE_TYPE)
-
-dir_path = os.path.dirname(os.path.realpath(__file__))
+# dir_path = os.path.dirname(os.path.realpath(__file__))
 
 
 # where to store program logs
-PROGRAM_LOG_FILE_NAME = './logs/coordinator.log'
-os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
-logger = logging.getLogger(THIS_NODE_UUID)
+# PROGRAM_LOG_FILE_NAME = './logs/coordinator.log'
+# os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
 
-log_socket_handler = SocketStreamHandler( '127.0.0.1', cfg.logs_server_address[1] )
-log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
-log_socket_handler.setFormatter(log_info_formatter)
-log_socket_handler.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
-log_console_handler = logging.StreamHandler(sys.stdout)
-log_console_handler.setLevel(args.log_level)
-log_formatter = logging.Formatter("Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
-log_console_handler.setFormatter(log_formatter)
-logger.setLevel(args.log_level)    
-logger.addHandler(log_console_handler)
+# log_socket_handler = SocketStreamHandler( '127.0.0.1', cfg.logs_server_address[1] )
+# log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
+# log_socket_handler.setFormatter(log_info_formatter)
+# log_socket_handler.setLevel(logging.INFO)
 
-logger.debug(f'Running in: {dir_path}')
+# log_console_handler = logging.StreamHandler(sys.stdout)
+# log_console_handler.setLevel(args.log_level)
+# log_formatter = logging.Formatter("Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
+# log_console_handler.setFormatter(log_formatter)
+# logger.setLevel(args.log_level)    
+# logger.addHandler(log_console_handler)
+
+# logger.debug(f'Running in: {dir_path}')
 
 db.db_logger = logger
 bmv2.bmv2_logger = logger
 
-thread_q = queue.Queue()
+# thread_q = queue.Queue()
 
 # TCP related
 COORDINATOR_MAX_TCP_CONNNECTIONS = 5
@@ -135,10 +132,10 @@ eth_ip = str( utils.get_interface_ip(interface) )
 se_bb_ip = str( utils.get_interface_ip('smartedge-bb') )
 
 ## Here we start the discovery using the group id and the subnet of the ethernet interface
-SE_NODE = se_net.Node(node_type=NODE_TYPE, node_uuid=THIS_NODE_UUID, 
-                      node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
+# SE_NODE = se_net.Node(node_type=SELF_TYPE, node_uuid=SELF_UUID, 
+#                       node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
 
-
+SE_NODE = None
 
 class Swarm_Node_Handler:
     def __init__(self, message, node_socket: socket.socket):
@@ -560,6 +557,21 @@ def exit_handler():
 def main():
     atexit.register(exit_handler)
     logger.info('Coordinator Starting')
+    SE_NODE.start()
+    node_thread = threading.Thread(target=node_handler, args=(HOST, NODE_PORT))
+    ap_thread = threading.Thread(target=ap_handler, args=(HOST, AP_PORT ))
+    ac_thread = threading.Thread(target=adaptive_coordinator_handler, args=(HOST, HIGHER_PORT))
+    node_thread.start()
+    ap_thread.start()
+    ac_thread.start()
+    
+def run(uuid):
+    global SELF_UUID, SE_NODE
+    SELF_UUID = uuid
+    # atexit.register(exit_handler)
+    logger.info('Coordinator Starting')
+    SE_NODE = se_net.Node(node_type=SELF_TYPE, node_uuid=SELF_UUID, 
+                      node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
     SE_NODE.start()
     node_thread = threading.Thread(target=node_handler, args=(HOST, NODE_PORT))
     ap_thread = threading.Thread(target=ap_handler, args=(HOST, AP_PORT ))

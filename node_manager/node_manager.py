@@ -24,27 +24,30 @@ from pathlib import Path
 
 STRs = cts.String_Constants 
 
-from argparse import ArgumentParser
-parser = ArgumentParser()
-parser.add_argument("-l", "--log-level", type=int, default=50,
-                    help="set logging level [10, 20, 30, 40, 50]")
-args = parser.parse_args()
+# from argparse import ArgumentParser
+# parser = ArgumentParser()
+# parser.add_argument("-l", "--log-level", type=int, default=50,
+#                     help="set logging level [10, 20, 30, 40, 50]")
+# args = parser.parse_args()
 
-PROGRAM_LOG_FILE_NAME = './logs/program.log'
-os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
-logger = logging.getLogger('SN_Logger')
-log_formatter = logging.Formatter(
-    "Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
-log_console_handler = logging.StreamHandler(sys.stdout)
-log_console_handler.setFormatter(log_formatter)
-logger.setLevel(args.log_level)
-logger.addHandler(log_console_handler)
+# PROGRAM_LOG_FILE_NAME = './logs/program.log'
+# os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
 
-DEFAULT_IFNAME = 'wlan0'
-loopback_if = 'lo:0'
+logger = logging.getLogger(__name__)
+
+# log_formatter = logging.Formatter(
+#     "Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
+# log_console_handler = logging.StreamHandler(sys.stdout)
+# log_console_handler.setFormatter(log_formatter)
+# logger.setLevel(args.log_level)
+# logger.addHandler(log_console_handler)
+
+DEFAULT_IFNAME = utils.get_interfaces()["wifi"]
 NODE_TYPE = 'SN'
-THIS_NODE_UUID = utils.generate_uuid_from_lo(loopback_if, NODE_TYPE)
-print('Assigned Node UUID:', THIS_NODE_UUID)
+SELF_UUID = "null"
+
+
+
 ACCESS_POINT_IP = ''
 q_to_coordinator = queue.Queue()
 q_to_mgr = queue.Queue()
@@ -107,7 +110,7 @@ def stop_heartbeat_service_if_running():
 
 def handle_successful_join(config_data: dict, ap_address: tuple, client_id: str = None):
     if client_id is None:
-        client_id = THIS_NODE_UUID
+        client_id = SELF_UUID
 
     veth1_ip = config_data.get(STRs.VETH1_VIP.name) or config_data.get("VETH1_VIP")
     if not veth1_ip:
@@ -184,7 +187,7 @@ def handle_communication():
                         coord_ip = ap_ip.replace("10.0.", "10.1.") if ap_ip.startswith("10.0.") else ap_ip
                         logger.info(f"[HB] Heartbeat ENABLED by Coordinator. Using coord_ip={coord_ip}")
                         start_heartbeat_service(
-                            client_id=THIS_NODE_UUID,
+                            client_id=SELF_UUID,
                             coord_ip=coord_ip,
                             pubkey_port=5007,
                             hb_port=5008,
@@ -194,7 +197,7 @@ def handle_communication():
                         logger.info("[HB] Heartbeat DISABLED by Coordinator.")
                         stop_heartbeat_service_if_running()
 
-                    handle_successful_join(config_data, ap_address, client_id=THIS_NODE_UUID)
+                    handle_successful_join(config_data, ap_address, client_id=SELF_UUID)
                 except Exception as e:
                     logger.error(repr(e))
                     return
@@ -232,7 +235,6 @@ def install_config_no_update_vxlan(config_data):
         f'ip link set veth1 address {swarm_veth1_vmac}',
         f'ifconfig veth1 {swarm_veth1_vip} netmask 255.255.0.0 up',
         f'ip link set veth0 up',
-        f'ip route replace default dev veth1',
         f'ip link set dev veth1 mtu 1400',
         f'ethtool --offload veth1 rx off tx off'
     ]
@@ -267,7 +269,6 @@ def install_swarmNode_config(swarmNode_config):
         f'ip link set veth1 address {swarm_veth1_vmac}',
         f'ifconfig veth1 {swarm_veth1_vip} netmask 255.255.0.0 up',
         f'ip link set veth0 up',
-        f'ip route replace default dev veth1',
         f'ip link set dev veth1 mtu 1400',
         f'ethtool --offload veth1 rx off tx off'
     ]
@@ -382,6 +383,18 @@ def main():
     t2 = threading.Thread(target=monitor_wifi_status, args=())
     t1.start()
     t2.start()
+    
+def run(uuid):
+    global SELF_UUID
+    
+    SELF_UUID = uuid
+    
+    logger.info(f"--- {SELF_UUID} Starting ...")
+    t1 = threading.Thread(target=handle_communication, args=())
+    t2 = threading.Thread(target=monitor_wifi_status, args=())
+    t1.start()
+    t2.start()
+
 
 if __name__ == '__main__':
     atexit.register(exit_handler)

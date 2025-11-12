@@ -34,47 +34,49 @@ from lib.performance_monitor import measure_performance
 from lib.logger_utils import get_logger, SocketStreamHandler
 
 
-logger_console = get_logger("Access Point", "Console")
-logger_metric = get_logger("Access Point", "Metric")
+logger_console = logging.getLogger(__name__)
+
+
+logger_metric = logging.getLogger(__name__) # get_logger("Access Point", "Metric", 10, "192.168.1.101", 5000)
 
 
 STRs = cts.String_Constants
 
-
-## We use the lo:0 interface to generate the ID of the node
-loopback_if = 'lo:0'
-NODE_TYPE='AP'
-THIS_AP_UUID = utils.generate_uuid_from_lo(loopback_if=loopback_if, node_type=NODE_TYPE)
+SELF_TYPE = "AP"
+SELF_UUID = "null_uuid"
 
 
-parser = ArgumentParser()
-parser.add_argument("-l", "--log-level",type=int, default=50, help="set logging level [10, 20, 30, 40, 50]")
-parser.add_argument("-n", "--num-id",type=int, default=50, help="sequential uniq numeric id for node identification")
-args = parser.parse_args()
+# parser = ArgumentParser()
+# parser.add_argument("-l", "--log-level",type=int, default=50, help="set logging level [10, 20, 30, 40, 50]")
+# parser.add_argument("-n", "--num-id",type=int, default=50, help="sequential uniq numeric id for node identification")
+# args = parser.parse_args()
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 # this part handles logging to console and to a file for debugging purposes
 # where to store program logs
-PROGRAM_LOG_FILE_NAME = './logs/ap.log'
+# PROGRAM_LOG_FILE_NAME = './logs/ap.log'
 
-os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
+# os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
+
+
 #logger = logging.getLogger("Access Point")
 
-log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
+# log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
 
 
-client_monitor_log_console_handler = logging.StreamHandler(sys.stdout)
-log_debug_formatter = logging.Formatter("Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
-client_monitor_log_console_handler.setFormatter(log_debug_formatter)
-client_monitor_log_console_handler.setLevel(args.log_level)
-log_socket_handler = None
-logger_console.setLevel(logging.DEBUG)
+# client_monitor_log_console_handler = logging.StreamHandler(sys.stdout)
+# log_debug_formatter = logging.Formatter("Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
+# client_monitor_log_console_handler.setFormatter(log_debug_formatter)
+# client_monitor_log_console_handler.setLevel(args.log_level)
+# log_socket_handler = None
+# logger_console.setLevel(logging.DEBUG)
 
-logger_console.addHandler(client_monitor_log_console_handler)
+# logger_console.addHandler(client_monitor_log_console_handler)
 
-db.db_logger = logger_console
-bmv2.bmv2_logger = logger_console
+# db.db_logger = logger_console
+# bmv2.bmv2_logger = logger_console
+# utils.logger = logger_console
 
 
 
@@ -91,7 +93,7 @@ IW_TOOL_LEFT_STATION_EVENT = 'del'
 # TODO: make this configurable by coordinator
 THIS_SWARM_SUBNET=ipaddress.ip_address( cfg.this_swarm_subnet )
 
-DEFAULT_SUBNET=ipaddress.ip_address(f'10.0.{args.num_id}.0')
+DEFAULT_SUBNET=ipaddress.ip_address(f'10.0.{cfg.SELF_UUID}.0')
 
 COORDINATOR_S0_IP = cfg.COORDINATOR_S0_IP #f'10.0.{args.num_id}.254'
 
@@ -108,30 +110,29 @@ SWARM_P4_MC_GROUP = 1
 # a list to keep track of connected stations to current AP
 connected_stations = {}
 
-
 CONNECTED_STATIONS_VMAC_INDEX = 0
 CONNECTED_STATIONS_VIP_INDEX = 1
 CONNECTED_STATION_VXLAN_INDEX = 2
 
-DEFAULT_WLAN_DEVICE_NAME= cfg.default_wlan_device
+WLAN_IF = utils.get_interfaces()["wifi"]
+ETH_IF = utils.get_interfaces()["ethernet"]
 
-
-
+# print(f"Using WLAN interface: {WLAN_IF }")
 
 THIS_AP_ETH_MAC = None
 for snic in psutil.net_if_addrs()[cfg.default_backbone_device]:
     if snic.family == psutil.AF_LINK:        
         THIS_AP_ETH_MAC = snic.address
 if THIS_AP_ETH_MAC == None:
-    logger_console.error("Could not Connect to backbone, check eth device name in the config file")
+    logger_console.error("Could not Connect to backbone, check device name in the config file")
     exit()
 
 THIS_AP_WLAN_MAC = None
-for snic in psutil.net_if_addrs()[cfg.default_wlan_device]:
+for snic in psutil.net_if_addrs()[WLAN_IF]:
     if snic.family == psutil.AF_LINK:        
         THIS_AP_WLAN_MAC = snic.address
 if THIS_AP_WLAN_MAC == None:
-    logger_console.error("Could not Connect to backbone, check eth device name in the config file")
+    logger_console.error("error getting wlan interface")
     exit()
 
 ## Group ID is for discovery
@@ -141,29 +142,34 @@ interface = utils.get_default_iface_name_linux()
 eth_ip = str( utils.get_interface_ip(interface) )
 se_bb_ip = str( utils.get_interface_ip('smartedge-bb') )
 
-## Here we start the discovery using the group id and the subnet of the ethernet interface
-SE_NODE = se_net.Node(node_type=NODE_TYPE, node_uuid=THIS_AP_UUID, 
-                      node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
+## Here we start the discovery using the groupNoneand the subnet of the ethernet interface
 
+SE_NODE = None
 
+# SE_NODE = se_net.Node(node_type = SELF_TYPE,
+#                       node_uuid = SELF_UUID,
+#                       node_sebackbone_ip=se_bb_ip, 
+#                       group_id=cfg.group_id)
 
 switch = {  'name': str(socket.gethostname() ), 
-            'type': NODE_TYPE, 
+            'type': SELF_TYPE, 
             'address': eth_ip,
             'node_sebackbone_ip': se_bb_ip
             }
 
 THIS_AP = bmv2.connect_to_switch(switch['address'])
 
+@measure_performance("Access Point", logger_metric)
 def initialize_program():
     while not SE_NODE.known_coordinators:
+        logger_console.info("Waiting to Discover a Coordinator ...")
         time.sleep(1)
         
-    logger_console.warning(f'Known Coordinators {SE_NODE.known_coordinators}')
+    logger_console.info(f'Known Coordinators {SE_NODE.known_coordinators}')
     try:
         first_key = next(iter(SE_NODE.known_coordinators))
         log_socket_handler = SocketStreamHandler( SE_NODE.known_coordinators[first_key]['address'], cfg.logs_server_address[1] )
-        log_socket_handler.setFormatter(log_info_formatter)
+        # log_socket_handler.setFormatter(log_info_formatter)
         log_socket_handler.setLevel(logging.INFO)
         logger_console.addHandler(log_socket_handler)
         db.DATABASE_IN_USE = db.STR_DATABASE_TYPE_CASSANDRA
@@ -201,9 +207,9 @@ def initialize_program():
     bmv2.send_cli_command_to_bmv2(cli_command=f"mc_node_associate {SWARM_P4_MC_GROUP} 0", instance=THIS_AP)
     bmv2.send_cli_command_to_bmv2(cli_command=f"table_add MyIngress.tb_l2_forward ac_l2_broadcast 01:00:00:00:00:00&&&0x010000000000 => {SWARM_P4_MC_GROUP} 100 ", instance=THIS_AP)
     
-    logger_console.info(f"AP ID: {THIS_AP_UUID} is up" )
+    logger_console.info(f"AP ID: {SELF_UUID} is up" )
     logger_console.info("Access Point initialization complete — AP Started")
-    #print('\n\n\nAP Started')
+
 
 # a handler to clean exit the programs
 @measure_performance("Access Point", logger_metric) 
@@ -238,7 +244,7 @@ def create_vxlan_by_host_id(vxlan_id, remote, port=4789):
     logger_console.debug(f'Adding se_vxlan{vxlan_id}')
     
     add_vxlan_shell_command = "ip link add se_vxlan%s type vxlan id %s dev %s remote %s dstport %s" % (
-        vxlan_id, vxlan_id, DEFAULT_WLAN_DEVICE_NAME, remote, port)
+        vxlan_id, vxlan_id, WLAN_IF , remote, port)
 
     result = subprocess.run(add_vxlan_shell_command.split(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if (result.stderr):
@@ -297,7 +303,7 @@ def get_ip_from_arp_by_physical_mac(physical_mac):
             logger_console.error(f'\nCould not run arp for {physical_mac}:\n\t {result.stderr}')
             return
         for line in result.stdout.strip().splitlines():
-            if physical_mac in line and DEFAULT_WLAN_DEVICE_NAME in line:
+            if physical_mac in line and WLAN_IF  in line:
                 ip = line.split()[0]
                 logger_console.debug(f'\nIP {ip} was found in ARP for {physical_mac} after {time.time() - t0} Seconds')                
                 return ip
@@ -321,7 +327,7 @@ async def handle_new_connected_station(station_physical_mac_address):
     # this check skips the execution of the rest of the code, as the station is already connected and set up.
     if (station_physical_mac_address in connected_stations.keys() ):
         
-        logger_console.warning(f'\nStation {station_physical_mac_address} Connected to {THIS_AP_UUID} but was found already in Connected Stations')
+        logger_console.warning(f'\nStation {station_physical_mac_address} Connected to {SELF_UUID} but was found already in Connected Stations')
         return
     
     # get the IP of the node from its mac address from the ARP table
@@ -390,7 +396,7 @@ async def handle_new_connected_station(station_physical_mac_address):
             STRs.SWARM_ID.name: 0,
             STRs.COORDINATOR_VIP.name: str(COORDINATOR_S0_IP),
             STRs.COORDINATOR_TCP_PORT.name: cfg.coordinator_tcp_port,
-            STRs.AP_UUID.name: THIS_AP_UUID
+            STRs.AP_UUID.name: SELF_UUID
         }
         
         swarmNode_config_message = json.dumps(swarmNode_config)   
@@ -404,9 +410,8 @@ async def handle_new_connected_station(station_physical_mac_address):
             
         connected_stations[station_physical_mac_address] = [ station_physical_mac_address ,node_s0_ip, vxlan_id]
         logger_console.debug(f"Connected Stations List after Adding {station_physical_mac_address}: {connected_stations}")
-
-            
-        db.insert_into_art(node_uuid=SN_UUID, current_ap=THIS_AP_UUID, swarm_id=0, ap_port=vxlan_id, node_ip=node_s0_ip)
+        
+        db.insert_into_art(node_uuid=SN_UUID, current_ap=SELF_UUID, swarm_id=0, ap_port=vxlan_id, node_ip=node_s0_ip)
         
         entry_handle = bmv2.add_entry_to_bmv2(communication_protocol= bmv2.P4_CONTROL_METHOD_THRIFT_CLI,
                             table_name='MyIngress.tb_ipv4_lpm',
@@ -415,7 +420,7 @@ async def handle_new_connected_station(station_physical_mac_address):
      
         
         for uuid, sw_data in SE_NODE.get_aps_dict().items():
-            if uuid != THIS_AP_UUID:
+            if uuid != SELF_UUID:
                 ap_address = sw_data['address']
                 ap_mac = utils.int_to_mac( int(ipaddress.ip_address(sw_data['sebackbone_ip'])) )
                 entry_handle = bmv2.add_entry_to_bmv2(communication_protocol= bmv2.P4_CONTROL_METHOD_THRIFT_CLI,
@@ -475,7 +480,7 @@ async def handle_new_connected_station(station_physical_mac_address):
             STRs.SWARM_ID.name              : node_info.current_swarm,
             STRs.COORDINATOR_VIP.name       : cfg.coordinator_vip,
             STRs.COORDINATOR_TCP_PORT.name  : cfg.coordinator_tcp_port,
-            STRs.AP_UUID.name               : THIS_AP_UUID
+            STRs.AP_UUID.name               : SELF_UUID
         }
         
         swarmNode_config_message = json.dumps(swarmNode_config)
@@ -489,8 +494,8 @@ async def handle_new_connected_station(station_physical_mac_address):
         
         logger_console.debug(f"Connected Stations List after Adding {station_physical_mac_address}: {connected_stations.keys()}")
         
-        db.insert_into_art(node_uuid=SN_UUID, current_ap=THIS_AP_UUID, swarm_id=node_info.current_swarm, ap_port=vxlan_id, node_ip=station_vip)
-        db.insert_node_into_swarm_database(node_uuid=SN_UUID, this_ap_id= THIS_AP_UUID,
+        db.insert_into_art(node_uuid=SN_UUID, current_ap=SELF_UUID, swarm_id=node_info.current_swarm, ap_port=vxlan_id, node_ip=station_vip)
+        db.insert_node_into_swarm_database(node_uuid=SN_UUID, this_ap_id= SELF_UUID,
                                         host_id=host_id, node_vip=station_vip, node_vmac=station_vmac, 
                                         node_phy_mac=station_physical_mac_address, status=db.db_defines.SWARM_STATUS.JOINED.value)
         
@@ -501,10 +506,10 @@ async def handle_new_connected_station(station_physical_mac_address):
                             action_name='MyIngress.ac_ipv4_forward_mac_from_dst_ip', match_keys=f'{station_vip}/32' , 
                             action_params= f'{str(vxlan_id)}', instance=THIS_AP)
      
-        # node_ap_ip = cfg.ap_list[THIS_AP_UUID][0]
-        ap_ip_for_mac_derivation = SE_NODE.get_aps_dict()[THIS_AP_UUID]['sebackbone_ip']
+        # node_ap_ip = cfg.ap_list[SELF_UUID][0]
+        ap_ip_for_mac_derivation = SE_NODE.get_aps_dict()[SELF_UUID]['sebackbone_ip']
         for uuid, sw_data in SE_NODE.get_aps_dict().items():
-            if uuid != THIS_AP_UUID:
+            if uuid != SELF_UUID:
                 ap_ip = sw_data['address']
                 ap_mac = utils.int_to_mac( int(ipaddress.ip_address(ap_ip_for_mac_derivation)) )
                 entry_handle = bmv2.add_entry_to_bmv2(communication_protocol= bmv2.P4_CONTROL_METHOD_THRIFT_CLI,
@@ -524,10 +529,10 @@ async def handle_disconnected_station(station_physical_mac_address):
         
         node_db_result = db.get_node_info_from_art(node_uuid=SN_UUID)
         node_info = node_db_result.one()
-        node_ap = THIS_AP_UUID
+        node_ap = SELF_UUID
         if (node_info != None):
             node_ap = node_info.current_ap
-        if (station_physical_mac_address not in connected_stations.keys() or node_ap != THIS_AP_UUID ):
+        if (station_physical_mac_address not in connected_stations.keys() or node_ap != SELF_UUID ):
             logger_console.warning(f'\nStation {station_physical_mac_address} disconnected from AP but was not found in connected stations: {connected_stations.keys()}')
             return
         # Wait for some time configured by the variable in cfg before considering that the node has actually disconnected
@@ -545,7 +550,7 @@ async def handle_disconnected_station(station_physical_mac_address):
         
         node_db_result = db.get_node_info_from_art(node_uuid=SN_UUID)
         node_info = node_db_result.one()
-        if ( node_info == None or node_info.current_ap != THIS_AP_UUID):
+        if ( node_info == None or node_info.current_ap != SELF_UUID):
             bmv2.remove_bmv2_swarm_broadcast_port(ap_ip='0.0.0.0', thrift_port=9090, switch_port=node_info.ap_port, instance=THIS_AP)
             try:
                 logger_console.debug(f"Connected Stations List before removing {station_physical_mac_address}: {connected_stations}")                
@@ -555,7 +560,7 @@ async def handle_disconnected_station(station_physical_mac_address):
                 logger_console.error(f'could not delete station from connected station set {repr(e)}')
             return
         logger_console.info(f'Removing disconnected Node: {station_physical_mac_address}')
-        logger_console.debug(f"Connected Stations List before removing {station_physical_mac_address}: {connected_stations}")                
+        logger_console.debug(f"Connected Stations List before removing {station_physical_mac_address}: {connected_stations}")                 
     
         # station_physical_ip_address = get_ip_from_arp(station_physical_mac_address)
         station_virtual_ip_address = connected_stations[station_physical_mac_address][CONNECTED_STATIONS_VIP_INDEX]
@@ -580,7 +585,7 @@ async def handle_disconnected_station(station_physical_mac_address):
         
         db.delete_node_from_art(uuid=SN_UUID)  # also deletes from swarm database
     
-        logger_console.info(f'station: {station_virtual_ip_address} left {THIS_AP_UUID}')
+        logger_console.info(f'station: {station_virtual_ip_address} left {SELF_UUID}')
         delete_vxlan_by_host_id(station_vxlan_id)
     except Exception as e:
         logger_console.error(f"Error handling disconnected station {SN_UUID}: {repr(e)}")
@@ -621,12 +626,23 @@ def ap_id_to_vxlan_id(access_point_id):
         
                
 def main():
-    #print("AP Starting")
     logger_console.info("AP Starting")
     SE_NODE.start()        
     initialize_program()
     monitor_stations()
 
+def run(uuid):
+    global SELF_UUID, SE_NODE
+    SELF_UUID = uuid
+    logger_console.info(f"\n--{SELF_UUID} Starting")
+    SE_NODE = se_net.Node(
+        node_type = SELF_TYPE,
+        node_uuid = SELF_UUID,
+        node_sebackbone_ip=se_bb_ip, 
+        group_id=cfg.group_id)
+    SE_NODE.start()        
+    initialize_program()
+    monitor_stations()
             
     
 if __name__ == '__main__':

@@ -17,6 +17,7 @@ class SocketStreamHandler(logging.Handler):
     def _connect(self):
         try:
             self.sock = socket.create_connection((self.host, self.port))
+            print(f"[LoggerUtils] Connected to log server at {self.host}:{self.port}")
         except Exception as e:
             print(f"[LoggerUtils] Failed to connect to log server at {self.host}:{self.port}: {e}")
             self.sock = None
@@ -60,6 +61,13 @@ def get_logger(source: str, log_type: str, level=logging.INFO,
         fmt=f"[{log_type}] [{source}] %(asctime)s [%(levelname)s]: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
+    
+    # formatter = logging.Formatter(
+    #     fmt=f"[{log_type}] [{source}] Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n",
+    #     datefmt="%Y-%m-%d %H:%M:%S"
+    # )
+    
+
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)

@@ -13,6 +13,7 @@ class Node:
         self.node_name = socket.gethostname()
         self.node_type = node_type
         self.uuid = node_uuid
+        self.start_timestamp = f"{int(time.time())}"
         self.group_id = group_id
         self.node_sebackbone_ip = node_sebackbone_ip
         self.known_aps = {}
@@ -48,14 +49,16 @@ class Node:
                 data, addr = self.sock.recvfrom(1024)
                 message = json.loads(data.decode('utf-8'))
                 if message['group_id'] == self.group_id:
+                    timestamp = message.get('last_update', '0')
                     type = message['type']
                     uuid = message['uuid']
                     node_name = message['name']
                     node_ip = message['address']
                     node_sebackbone_ip = message['sebackbone_ip']
-                    if type == 'AP' and uuid not in self.known_aps:    
+                    if type == 'AP' and ( uuid not in self.known_aps or int(timestamp) > int(self.known_aps[uuid]['last_update']) ):    
                         switch = {  'name': node_name, 
                                     'type': type, 
+                                    'last_update': timestamp,
                                     'address': node_ip,
                                     'sebackbone_ip': node_sebackbone_ip
                                     }
@@ -64,21 +67,23 @@ class Node:
                             continue
                         switch['cli_instance'] = cli_instance
                         with self.lock:
-                            self.known_aps[uuid] =  switch
+                            self.known_aps[uuid] =  switch 
                             print(f"Discovered {type}: {uuid} at {node_ip}")
                                 
-                    elif type == 'CO' and uuid not in self.known_coordinators:
+                    elif type == 'CO' and ( uuid not in self.known_coordinators or int(timestamp) > int(self.known_coordinators[uuid]['last_update']) ):
                         with self.lock:
                             self.known_coordinators[uuid] = { 
                                                          'name': node_name, 
                                                          'type': type, 
                                                          'address': node_ip,
+                                                         'last_update': timestamp,
                                                          'sebackbone_ip': node_sebackbone_ip
                                                     }
                             print(f"Discovered {type}: {uuid} at {node_ip}")
                         
             except Exception as e:
                 print(f"Error receiving data: {e}")
+                print(f"message: {message}")
 
     def announce(self):
         """Announce presence periodically."""
@@ -86,6 +91,7 @@ class Node:
             message = {
                 'group_id': self.group_id,
                 'type': self.node_type,
+                'last_update': self.start_timestamp,
                 'uuid': self.uuid,
                 'sebackbone_ip': self.node_sebackbone_ip,
                 'name': self.node_name,
@@ -103,6 +109,8 @@ class Node:
         """Start the node."""
         # Enable broadcasting
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
 
         # Start listening thread
         listen_thread = threading.Thread(target=self.listen, daemon=True)
