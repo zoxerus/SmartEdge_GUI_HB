@@ -88,19 +88,19 @@ SELF_UUID = "null"
 # PROGRAM_LOG_FILE_NAME = './logs/coordinator.log'
 # os.makedirs(os.path.dirname(PROGRAM_LOG_FILE_NAME), exist_ok=True)
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
-# log_socket_handler = SocketStreamHandler( '127.0.0.1', cfg.logs_server_address[1] )
-# log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
-# log_socket_handler.setFormatter(log_info_formatter)
-# log_socket_handler.setLevel(logging.INFO)
+log_socket_handler = SocketStreamHandler( '10.1.255.240', cfg.logs_server_address[1] )
+log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
+log_socket_handler.setFormatter(log_info_formatter)
+log_socket_handler.setLevel(logging.INFO)
 
-# log_console_handler = logging.StreamHandler(sys.stdout)
-# log_console_handler.setLevel(args.log_level)
-# log_formatter = logging.Formatter("Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
-# log_console_handler.setFormatter(log_formatter)
-# logger.setLevel(args.log_level)    
-# logger.addHandler(log_console_handler)
+log_console_handler = logging.StreamHandler(sys.stdout)
+log_console_handler.setLevel(10)
+log_formatter = logging.Formatter("Line:%(lineno)d at %(asctime)s [%(levelname)s] Thread: %(threadName)s File: %(filename)s :\n%(message)s\n")
+log_console_handler.setFormatter(log_formatter)
+logger.setLevel(10)    
+logger.addHandler(log_console_handler)
 
 # logger.debug(f'Running in: {dir_path}')
 
@@ -194,7 +194,7 @@ async def offboard_node(host_id, uuid, ap_id, node_vip, ap_port, available_nodes
     logger.debug(f'Sending {config_message} to {node_vip}')
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            # s.settimeout(5)
+            s.settimeout(5)
             s.connect((node_vip, cfg.node_manager_tcp_port))
             s.sendall( bytes( config_message.encode() ) )
             logger.debug(f'sent {config_message} to {SN_UUID}')
@@ -405,12 +405,16 @@ async def handle_ac_communication(ac_socket):
             available_nodes_aps = []
             available_nodes_ports = []
 
+            nodes_already_in_swarm = []
             for row in rows:
                 if row.current_swarm == 0:
                     availalbe_nodes_ids.append(row.uuid)
                     available_nodes_ips.append(row.virt_ip)
                     available_nodes_aps.append(row.current_ap)
                     available_nodes_ports.append(row.ap_port)
+                elif row.current_swarm == 1:
+                    nodes_already_in_swarm.append(row.uuid)
+                    pass
 
             if not available_nodes_ips:
                 logger.warning("[AC] No available nodes found for join request.")
@@ -454,7 +458,7 @@ async def handle_ac_communication(ac_socket):
 
             message = {
                 'Type': str_AVAILABLE_NODES,
-                str_NODE_IDS: available_nodes
+                str_NODE_IDS: available_nodes + nodes_already_in_swarm
             }
             try:
                 ac_socket.sendall(json.dumps(message).encode())
@@ -575,14 +579,14 @@ def run(uuid, no_discovery):
     SE_NODE = se_net.Node(node_type=SELF_TYPE, node_uuid=SELF_UUID, 
                       node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
     if no_discovery:
-        SE_NODE.known_aps['AP02'] = { 
-            'name': 'AP02', 
+        SE_NODE.known_aps['AP000002'] = { 
+            'name': 'AP000002', 
             'type': 'AP', 
             'address': '10.1.255.240',
             'last_update': time.monotonic(),
             'sebackbone_ip': '10.1.255.240'
         }
-        switch = {  'name': "AP02", 
+        switch = {  'name': "AP000002", 
             'type': 'AP', 
             'last_update': time.monotonic(),
             'address': '10.1.255.240',
@@ -590,7 +594,7 @@ def run(uuid, no_discovery):
             }
         cli_instance = bmv2.connect_to_switch('10.1.255.240')
         switch['cli_instance'] = cli_instance
-        SE_NODE.known_aps['AP02'] =  switch 
+        SE_NODE.known_aps['AP000002'] =  switch 
     else: 
         SE_NODE.start()
     node_thread = threading.Thread(target=node_handler, args=(HOST, NODE_PORT))

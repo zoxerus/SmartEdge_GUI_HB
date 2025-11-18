@@ -208,36 +208,36 @@ def main():
     if args.uuid_self:
         SELF_UUID_NUM = args.uuid_self
         
-    SELF_UUID_STR = f"{args.type.upper()}{SELF_UUID_NUM:02d}"
+    SELF_UUID_STR = f"{args.type.upper()}{SELF_UUID_NUM:06d}"
     init_logger(args.log_level)
     logger.info(f"-- Starting as: {args.type.upper()}")
-    match args.type.upper():
-        case 'AP':
-            # init_backbone()
-            init_hotspot()
-            import ap_manager.ap_manager as AP
-            AP.run(SELF_UUID_STR, args.no_discovery)
-            pass
-        case 'SN':
-            import node_manager.node_manager as SN
-            init_wlan()
-            SN.run(SELF_UUID_STR)
-            pass
-        case 'CO':
-            # init_backbone()
-            import coordinator.coordinator as CO
-            CO.run(SELF_UUID_STR, args.no_discovery)
-            pass
-        case 'AC':
-            if not ( args.uuid_ap and args.uuid_co):
-                print("must supply args: --uuid-ap and --uuid-co")
-                exit()
-            AP_UUID_STR = f"AP{args.uuid_ap:02d}"
-            init_colocated(co_uuid = args.uuid_ap)
-            init_hotspot()
-            import ap_manager.ap_manager as AP
-            AP.run(AP_UUID_STR, no_discovery = True )
-        
+    if args.type.upper() == 'AP':
+        from lib.logger_utils import SocketStreamHandler
+        # init_backbone()
+        init_hotspot()
+        import ap_manager.ap_manager as AP
+        AP.run(SELF_UUID_STR, args.no_discovery)
+        pass
+    elif args.type.upper() == 'SN':
+        import node_manager.node_manager as SN
+        init_wlan()
+        SN.run(SELF_UUID_STR)
+        pass
+    elif args.type.upper() == 'CO':
+        # init_backbone()
+        import coordinator.coordinator as CO
+        CO.run(SELF_UUID_STR, args.no_discovery)
+        pass
+    elif args.type.upper() == 'AC':
+        if not ( args.uuid_ap and args.uuid_co):
+            print("must supply args: --uuid-ap and --uuid-co")
+            exit()
+        AP_UUID_STR = f"AP{args.uuid_ap:06d}"
+        init_colocated(co_uuid = args.uuid_ap)
+        init_hotspot()
+        import ap_manager.ap_manager as AP
+        AP.run(AP_UUID_STR, no_discovery = True )
+    
     exit()
 
 if __name__ == '__main__':

@@ -232,14 +232,14 @@ def install_config_no_update_vxlan(config_data):
     logger.info(f"[VXLAN-CONFIG] Using existing se_vxlan interface to AP={ACCESS_POINT_IP}")
 
     commands = [
-        f'ip link set veth1 address {swarm_veth1_vmac}',
-        f'ifconfig veth1 {swarm_veth1_vip} netmask 255.255.0.0 up',
-        f'arp -s 10.0.255.254 00:00:0a:01:ff:f000',
-        f'ip link set veth0 up',
-        f'ip link set dev veth1 mtu 1400',
-        "sudo ip link set dev veth0 xdp off",
-        "sudo ip link set dev veth1 xdp off",
-        f'ethtool --offload veth1 rx off tx off'
+        f'ip link set se_vxlan address {swarm_veth1_vmac}',
+        f'ifconfig se_vxlan {swarm_veth1_vip} netmask 255.255.0.0 up',
+        # f'arp -s 10.0.255.254 00:00:0a:01:ff:f000',
+        f'ip link set se_vxlan up',
+        f'ip link set dev se_vxlan mtu 1450',
+        # "sudo ip link set dev veth0 xdp off",
+        # "sudo ip link set dev veth1 xdp off",
+        f'ethtool --offload se_vxlan rx off tx off'
     ]
     for command in commands:
         logger.debug('executing: ' + command)
@@ -265,16 +265,16 @@ def install_swarmNode_config(swarmNode_config):
 
     commands = [
         'ip link del se_vxlan',
-        'ip link del veth1',
+        # 'ip link del veth1',
         f'ip link add se_vxlan type vxlan id {vxlan_id} dev {DEFAULT_IFNAME} remote {ACCESS_POINT_IP} dstport 4789',
-        'ip link set dev se_vxlan up',
-        'ip link add veth0 type veth peer name veth1',
-        f'ip link set veth1 address {swarm_veth1_vmac}',
-        f'ifconfig veth1 {swarm_veth1_vip} netmask 255.255.0.0 up',
-        f'ip link set veth0 up',
-        f'ip link set dev veth1 mtu 1400',
-        "sudo ip link set dev veth0 xdp off",
-        "sudo ip link set dev veth1 xdp off",
+        # 'ip link set dev se_vxlan up',
+        # 'ip link add veth0 type veth peer name veth1',
+        f'ip link set se_vxlan address {swarm_veth1_vmac}',
+        f'ifconfig se_vxlan {swarm_veth1_vip} netmask 255.255.0.0 up',
+        f'ip link set se_vxlan up',
+        f'ip link set dev se_vxlan mtu 1450',
+        # "sudo ip link set dev veth0 xdp off",
+        # "sudo ip link set dev veth1 xdp off",
         f'ethtool --offload veth1 rx off tx off'
     ]
     for command in commands:
@@ -285,30 +285,30 @@ def install_swarmNode_config(swarmNode_config):
             logger.error(f"Error executing command {command}: \n{process_ret.stderr}")
 
     # Retrieve link indices for P4 pipeline
-    get_if1_index_command = 'cat /sys/class/net/veth0/ifindex'
-    get_if2_index_command = 'cat /sys/class/net/se_vxlan/ifindex'
-    if1_index = subprocess.run(get_if1_index_command.split(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if2_index = subprocess.run(get_if2_index_command.split(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # get_if1_index_command = 'cat /sys/class/net/veth0/ifindex'
+    # get_if2_index_command = 'cat /sys/class/net/se_vxlan/ifindex'
+    # if1_index = subprocess.run(get_if1_index_command.split(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # if2_index = subprocess.run(get_if2_index_command.split(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    logger.info(f"[VXLAN-CONFIG] Interface indices: veth0={if1_index.stdout.strip()}, se_vxlan={if2_index.stdout.strip()}")
-    logger.info(f"[VXLAN-CONFIG] Packets will traverse: veth0 <-> se_vxlan tunnel <-> AP {ACCESS_POINT_IP}")
+    # logger.info(f"[VXLAN-CONFIG] Interface indices: veth0={if1_index.stdout.strip()}, se_vxlan={if2_index.stdout.strip()}")
+    # logger.info(f"[VXLAN-CONFIG] Packets will traverse: veth0 <-> se_vxlan tunnel <-> AP {ACCESS_POINT_IP}")
 
-    commands = [
-        'nikss-ctl pipeline unload id 0',
-        'nikss-ctl pipeline load id 0 ./node_manager/utils/nikss.o',
-        'nikss-ctl add-port pipe 0 dev veth0',
-        'nikss-ctl add-port pipe 0 dev se_vxlan',
-        f'nikss-ctl table add pipe 0 ingress_route action id 2 key {if1_index.stdout.strip()} data {if2_index.stdout.strip()}',
-        f'nikss-ctl table add pipe 0 ingress_route action id 2 key {if2_index.stdout.strip()} data {if1_index.stdout.strip()}'
-    ]
-    for command in commands:
-        logger.debug('executing: ' + command)
-        process_ret = subprocess.run(command.split(), text=True,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if process_ret.stderr:
-            logger.error(f"Error executing command {command}: \n{process_ret.stderr}")
-        else:
-            logger.debug(f'executed command {command} and got output: {process_ret.stdout}')
+    # commands = [
+    #     'nikss-ctl pipeline unload id 0',
+    #     'nikss-ctl pipeline load id 0 ./node_manager/utils/nikss.o',
+    #     'nikss-ctl add-port pipe 0 dev veth0',
+    #     'nikss-ctl add-port pipe 0 dev se_vxlan',
+    #     f'nikss-ctl table add pipe 0 ingress_route action id 2 key {if1_index.stdout.strip()} data {if2_index.stdout.strip()}',
+    #     f'nikss-ctl table add pipe 0 ingress_route action id 2 key {if2_index.stdout.strip()} data {if1_index.stdout.strip()}'
+    # ]
+    # for command in commands:
+    #     logger.debug('executing: ' + command)
+    #     process_ret = subprocess.run(command.split(), text=True,
+    #                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    #     if process_ret.stderr:
+    #         logger.error(f"Error executing command {command}: \n{process_ret.stderr}")
+    #     else:
+    #         logger.debug(f'executed command {command} and got output: {process_ret.stdout}')
 
     logger.info(f"[VXLAN-CONFIG] Swarm Node config complete: "
                 f"VETH1={swarm_veth1_vip}/{swarm_veth1_vmac}, "

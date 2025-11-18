@@ -37,7 +37,7 @@ from lib.logger_utils import get_logger, SocketStreamHandler
 logger_console = logging.getLogger()
 
 
-logger_metric = logging.getLogger() # get_logger("Access Point", "Metric", 10, "192.168.1.101", 5000)
+logger_metric = get_logger("Access Point", "Metric", 10, "0.0.0.0", 5000)
 
 
 STRs = cts.String_Constants
@@ -185,7 +185,7 @@ def initialize_program():
 
     
     # remvoe all configureation from bmv2, start fresh
-    bmv2.send_cli_command_to_bmv2(cli_command="reset_state", instance=THIS_AP)
+    # bmv2.send_cli_command_to_bmv2(cli_command="reset_state", instance=THIS_AP)
 
     # attach the backbone interface to the bmv2
     bmv2.send_cli_command_to_bmv2(cli_command=f"port_remove {cfg.swarm_backbone_switch_port}", instance=THIS_AP)
@@ -333,7 +333,7 @@ async def handle_new_connected_station(station_physical_mac_address):
     if (station_physical_mac_address in connected_stations.keys() ):
         
         logger_console.warning(f'\nStation {station_physical_mac_address} Connected to {SELF_UUID} but was found already in Connected Stations')
-        return
+        # return
     
     # get the IP of the node from its mac address from the ARP table
     station_physical_ip_address = get_ip_from_arp_by_physical_mac(station_physical_mac_address)
@@ -539,19 +539,20 @@ async def handle_disconnected_station(station_physical_mac_address):
             node_ap = node_info.current_ap
         if (station_physical_mac_address not in connected_stations.keys() or node_ap != SELF_UUID ):
             logger_console.warning(f'\nStation {station_physical_mac_address} disconnected from AP but was not found in connected stations: {connected_stations.keys()}')
-            return
+            # return
         # Wait for some time configured by the variable in cfg before considering that the node has actually disconnected
         t0 = time.time()
         while time.time() - t0 < cfg.ap_wait_time_for_disconnected_station_in_seconds:
-            cli_command = "iw wlan0 station dump | grep Station | awk '{print $2}'"
-            proc_res = subprocess.run(cli_command,shell=True, text=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if (proc_res.stderr):
-                logger_console.error(f"Error running command: {cli_command}\nError Message: {proc_res.stderr}")
-            if (station_physical_mac_address in proc_res.stdout):
-                return
+            # cli_command = f"iw {WLAN_IF} station dump | grep Station"
+            # proc_res = subprocess.run(cli_command,shell=True, text=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # if (proc_res.stderr):
+            #     logger_console.error(f"Error running command: {cli_command}\nError Message: {proc_res.stderr}")
+            # if (station_physical_mac_address in proc_res.stdout):
+            #     return
             cli_command = f"ping -c 1 { get_ip_from_arp_by_physical_mac(station_physical_mac_address)}"
-            proc_res = subprocess.run(cli_command.split(), shell=False,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            time.sleep(1)
+            proc_res = subprocess.run(cli_command.split(), capture_output=True)
+            if (proc_res.returncode == 0):
+                return 
         
         node_db_result = db.get_node_info_from_art(node_uuid=SN_UUID)
         node_info = node_db_result.one()
@@ -601,7 +602,7 @@ def monitor_stations():
     monitoring_command = 'iw event'
 
     # python runs the shell command and monitors the output in the terminal
-    process = subprocess.Popen( monitoring_command.split() , stdout=subprocess.PIPE)
+    process = subprocess.Popen( monitoring_command.split() , stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     previous_line = ''
     # we iterate over the output lines to read the event and react accordingly
     for output_line in iter(lambda: process.stdout.readline().decode("utf-8"), ""):
@@ -646,8 +647,25 @@ def run(uuid, no_discovery):
         node_sebackbone_ip=se_bb_ip, 
         group_id=cfg.group_id)
     if no_discovery:
-        SE_NODE.known_coordinators['CO01'] = { 
-            'name': 'CO01', 
+        SE_NODE.known_aps[SELF_UUID] = { 
+            'name': SELF_UUID, 
+            'type': 'AP', 
+            'address': cfg.ap_colocated_s1_vip,
+            'last_update': time.time(),
+            'sebackbone_ip': cfg.ap_colocated_s1_vip
+        }
+        switch = {  'name': SELF_UUID, 
+            'type': 'AP', 
+            'last_update': time.time(),
+            'address': cfg.ap_colocated_s1_vip,
+            'sebackbone_ip': cfg.ap_colocated_s1_vip
+            }
+        cli_instance = bmv2.connect_to_switch(cfg.ap_colocated_s1_vip)
+        switch['cli_instance'] = cli_instance
+        SE_NODE.known_aps[SELF_UUID] =  switch 
+        
+        SE_NODE.known_coordinators['CO000001'] = { 
+            'name': 'CO000001', 
             'type': 'CO', 
             'address': cfg.coordinator_vip,
             'last_update': time.monotonic(),

@@ -21,18 +21,27 @@ message = {
 
 str_message = json.dumps(message)
 
-host = 'localhost'
+print("message is: ")
+print(str_message)
+
+host = "10.1.255.254"
 port = 9999
 
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((host, port))
         s.sendall(str_message.encode())
-        data = s.recv(1024).decode()
-        data_json = json.loads(data)
-        print("✅ Leave request accepted. Response:")
-        print(json.dumps(data_json, indent=2))
-        sys.exit(0)
+        try:
+            data = s.recv(1024)
+            if not data:
+                print("No Data Received")
+            else: 
+                data_json = json.loads(data)
+                print("✅ Leave request accepted. Response:")
+                print(json.dumps(data_json, indent=2))
+        except Exception as e:
+            print(e)
+            
 except Exception as e:
     print(f"❌ Socket error: {e}")
-    sys.exit(1)
+

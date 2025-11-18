@@ -9,8 +9,8 @@ from lib.performance_monitor import measure_performance
 from lib.logger_utils import get_logger
 import logging
 
-db_logger = logging.getLogger() # get_logger("coordinator", "Console", 10, "192.168.1.101")
-db_logger_metric = logging.getLogger() #get_logger("Coordinator", "Metric", 10, "192.168.1.101")
+db_logger =  get_logger("coordinator", "Console", 10, "10.1.255.240")
+db_logger_metric = get_logger("Coordinator", "Metric", 10, "10.1.255.240")
 
 STR_DATABASE_TYPE_REDIS = 'redis'
 STR_DATABASE_TYPE_CASSANDRA = 'cassandra'
