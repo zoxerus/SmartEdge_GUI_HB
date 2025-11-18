@@ -23,21 +23,29 @@ cluster = Cluster(["127.0.0.1"])
 session = cluster.connect()
 session.row_factory = dict_factory
 
+from pathlib import Path
+
+# Absolute path to this script file
+SCRIPT_FILE_PATH = Path(__file__).resolve()
+
+# Absolute path to the directory containing this script
+SCRIPT_DIR = SCRIPT_FILE_PATH.parent
+
 # =================================================
 # =============== Configuration ===================
 # =================================================
 # IMPORTANT: must match the path used by heartbeat_server.py
-LOG_FILE = "/home/Coordinator/smartedge_GUI/coordinator/logs/coordinator_hb_server.log"
+LOG_FILE = SCRIPT_DIR / "../../coordinator/logs/coordinator_hb_server.log"
 
 # Path to the heartbeat server script
-HB_SCRIPT = "/home/Coordinator/smartedge_GUI/coordinator/heartbeat_server.py"
+HB_SCRIPT = SCRIPT_DIR / "../../coordinator/heartbeat_server.py"
 
 # Tail behavior / history size
 TAIL_INTERVAL = 1.0   # seconds between file reads
 HISTORY_LIMIT = 150   # number of lines to keep per UUID
 
 # Launch logging for the server process (stdout/stderr from launcher, not the server's own log)
-LAUNCH_LOG = "/home/Coordinator/smartedge_GUI/coordinator/logs/hb_launch.log"
+LAUNCH_LOG = SCRIPT_DIR / "../../coordinator/logs/hb_launch.log"
 
 # Track the running process we launched (optional; we also have a fallback kill-by-name)
 _HB_PROCESS: Optional[subprocess.Popen] = None

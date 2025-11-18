@@ -17,8 +17,10 @@ from contextlib import redirect_stdout
 from thrift.transport.TTransport import TTransportException
 from lib.performance_monitor import measure_performance
 from lib.logger_utils import get_logger
-logger_console = get_logger("coordinator", "Console")
-logger_metric = get_logger("Coordinator", "Metric")
+import logging
+
+logger_console = logging.getLogger() #get_logger("coordinator", "Console")
+logger_metric = logging.getLogger() #get_logger("Coordinator", "Metric")
 
 #logger = None
 SWITCH_RESPONSE_ERROR = -1

@@ -282,34 +282,83 @@ control MyIngress(inout headers hdr,
         default_action = NoAction();
         counters = mcast_counter;
     }   
-    
+    /************************************************/
+    action ac_arp_respond_from_requested_ip(){
+        //update operation code from request to reply
+        hdr.arp.op_code = ARP_REPLY;
+        
+        //reply's dst_mac is the request's src mac
+        hdr.arp.dst_mac = hdr.arp.src_mac;
+        
+        //reply's dst_ip is the request's src ip
+        hdr.arp.src_mac = (bit<48>) hdr.arp.dst_ip;
+
+        //reply's src ip is the request's dst ip
+        hdr.arp.src_ip = hdr.arp.dst_ip;
+
+        //update ethernet header
+        hdr.ethernet.dstMac = hdr.ethernet.srcMac;
+        hdr.ethernet.srcMac = (bit<48>) hdr.arp.dst_ip;
+
+        //send it back to the same port
+        standard_metadata.egress_spec = standard_metadata.ingress_port;
+    }
+
+    action ac_arp_respond_with_mac(bit<48> response_mac){
+        //update operation code from request to reply
+        hdr.arp.op_code = ARP_REPLY;
+        
+        //reply's dst_mac is the request's src mac
+        hdr.arp.dst_mac = hdr.arp.src_mac;
+        
+        //reply's dst_ip is the request's src ip
+        hdr.arp.src_mac = response_mac;
+
+        //reply's src ip is the request's dst ip
+        hdr.arp.src_ip = hdr.arp.dst_ip;
+
+        //update ethernet header
+        hdr.ethernet.dstMac = hdr.ethernet.srcMac;
+        hdr.ethernet.srcMac = response_mac;
+
+        //send it back to the same port
+        standard_metadata.egress_spec = standard_metadata.ingress_port;
+    }
+
+    table tb_arp_responder {
+        key = {
+            hdr.arp.dst_ip:   lpm;
+        } 
+        actions = {
+            ac_arp_respond_from_requested_ip;
+            ac_arp_respond_with_mac;
+            NoAction;
+        }
+        size = 1024;
+        default_action = NoAction();
+    }  
+/*******************************************************************************/
+    table tb_swarm_verify {
+        key = {
+            hdr.ethernet.src_mac:   exact;
+        } 
+        actions = {
+            drop;
+            NoAction;
+        }
+        size = 1024;
+        default_action = drop();
+    }  
 
     //------------------------------------------------------//
     //------ I N G R E S S  P R O C E S S I N G ------------//
     apply {
-
+        tb_swarm_control.apply();
         if (hdr.ethernet.etherType == TYPE_ARP && hdr.arp.op_code == ARP_REQ ) {
-            //update operation code from request to reply
-            hdr.arp.op_code = ARP_REPLY;
-            
-            //reply's dst_mac is the request's src mac
-            hdr.arp.dst_mac = hdr.arp.src_mac;
-            
-            //reply's dst_ip is the request's src ip
-            hdr.arp.src_mac = (bit<48>) hdr.arp.dst_ip;
-
-            //reply's src ip is the request's dst ip
-            hdr.arp.src_ip = hdr.arp.dst_ip;
-
-            //update ethernet header
-            hdr.ethernet.dstMac = hdr.ethernet.srcMac;
-            hdr.ethernet.srcMac = (bit<48>) hdr.arp.dst_ip;
-
-            //send it back to the same port
-            standard_metadata.egress_spec = standard_metadata.ingress_port;
+            tb_arp_responder.apply();
             exit;
         } 
-        
+
         if (tb_l2_forward.apply().hit){
             exit;
         }

@@ -1,3 +1,4 @@
+#!../../.venv/bin/python
 import asyncio
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -528,7 +529,7 @@ async def request_leave(request: Request):
 async def start_coordinator():
     try:
         subprocess.Popen(
-            "cd /home/Coordinator/smartedge_GUI && source .venv/bin/activate && source run.sh co 10 > coord.log 2>&1 &",
+            "cd ../.. && source .venv/bin/activate && source run.sh co 10 > coord.log 2>&1 &",
             shell=True,
             executable="/bin/bash"
         )

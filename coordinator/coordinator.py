@@ -9,6 +9,7 @@ import queue
 sys.path.append('..')
 sys.path.append('.')
 
+import time
 import asyncio
 import psutil
 import atexit
@@ -121,7 +122,7 @@ THIS_SWARM_SUBNET=ipaddress.ip_address( cfg.this_swarm_subnet )
 
 db.DATABASE_IN_USE = db.STR_DATABASE_TYPE_CASSANDRA
 
-database_session = db.init_database('0.0.0.0', cfg.database_port)
+database_session = db.init_database(cfg.database_ip, cfg.database_port)
 db.DATABASE_SESSION = database_session
 
 ## Group ID is for discovery
@@ -263,6 +264,7 @@ async def onboard_node(
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
             print(f"[DEBUG] Connecting to Node {SN_UUID} at {node_s0_ip}:{cfg.node_manager_tcp_port}")
             s.connect((node_s0_ip, cfg.node_manager_tcp_port))
             s.sendall(config_message.encode())
@@ -565,14 +567,32 @@ def main():
     ap_thread.start()
     ac_thread.start()
     
-def run(uuid):
+def run(uuid, no_discovery):
     global SELF_UUID, SE_NODE
     SELF_UUID = uuid
     # atexit.register(exit_handler)
     logger.info('Coordinator Starting')
     SE_NODE = se_net.Node(node_type=SELF_TYPE, node_uuid=SELF_UUID, 
                       node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
-    SE_NODE.start()
+    if no_discovery:
+        SE_NODE.known_aps['AP02'] = { 
+            'name': 'AP02', 
+            'type': 'AP', 
+            'address': '10.1.255.240',
+            'last_update': time.monotonic(),
+            'sebackbone_ip': '10.1.255.240'
+        }
+        switch = {  'name': "AP02", 
+            'type': 'AP', 
+            'last_update': time.monotonic(),
+            'address': '10.1.255.240',
+            'sebackbone_ip': '10.1.255.240'
+            }
+        cli_instance = bmv2.connect_to_switch('10.1.255.240')
+        switch['cli_instance'] = cli_instance
+        SE_NODE.known_aps['AP02'] =  switch 
+    else: 
+        SE_NODE.start()
     node_thread = threading.Thread(target=node_handler, args=(HOST, NODE_PORT))
     ap_thread = threading.Thread(target=ap_handler, args=(HOST, AP_PORT ))
     ac_thread = threading.Thread(target=adaptive_coordinator_handler, args=(HOST, HIGHER_PORT))

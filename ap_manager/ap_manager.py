@@ -34,10 +34,10 @@ from lib.performance_monitor import measure_performance
 from lib.logger_utils import get_logger, SocketStreamHandler
 
 
-logger_console = logging.getLogger(__name__)
+logger_console = logging.getLogger()
 
 
-logger_metric = logging.getLogger(__name__) # get_logger("Access Point", "Metric", 10, "192.168.1.101", 5000)
+logger_metric = logging.getLogger() # get_logger("Access Point", "Metric", 10, "192.168.1.101", 5000)
 
 
 STRs = cts.String_Constants
@@ -120,7 +120,7 @@ ETH_IF = utils.get_interfaces()["ethernet"]
 # print(f"Using WLAN interface: {WLAN_IF }")
 
 THIS_AP_ETH_MAC = None
-for snic in psutil.net_if_addrs()[cfg.default_backbone_device]:
+for snic in psutil.net_if_addrs()[cfg.ap_backbone_device]:
     if snic.family == psutil.AF_LINK:        
         THIS_AP_ETH_MAC = snic.address
 if THIS_AP_ETH_MAC == None:
@@ -138,9 +138,9 @@ if THIS_AP_WLAN_MAC == None:
 ## Group ID is for discovery
 group_id = cfg.group_id
 ## interface is the network interface on which the discovery happens
-interface = utils.get_default_iface_name_linux()
+interface = cfg.ap_backbone_device # utils.get_default_iface_name_linux()
 eth_ip = str( utils.get_interface_ip(interface) )
-se_bb_ip = str( utils.get_interface_ip('smartedge-bb') )
+se_bb_ip = str( utils.get_interface_ip(cfg.ap_backbone_device) )
 
 ## Here we start the discovery using the groupNoneand the subnet of the ethernet interface
 
@@ -168,15 +168,20 @@ def initialize_program():
     logger_console.info(f'Known Coordinators {SE_NODE.known_coordinators}')
     try:
         first_key = next(iter(SE_NODE.known_coordinators))
-        log_socket_handler = SocketStreamHandler( SE_NODE.known_coordinators[first_key]['address'], cfg.logs_server_address[1] )
+        # log_socket_handler = SocketStreamHandler( SE_NODE.known_coordinators[first_key]['address'], cfg.logs_server_address[1] )
+        ################################
+        # log_socket_handler = SocketStreamHandler( "0.0.0.0", cfg.logs_server_address[1] )
+        
         # log_socket_handler.setFormatter(log_info_formatter)
-        log_socket_handler.setLevel(logging.INFO)
-        logger_console.addHandler(log_socket_handler)
+        # log_socket_handler.setLevel(logging.INFO)
+        # logger_console.addHandler(log_socket_handler)
         db.DATABASE_IN_USE = db.STR_DATABASE_TYPE_CASSANDRA
-        db.DATABASE_SESSION = db.connect_to_database(SE_NODE.known_coordinators[first_key]['address'], cfg.database_port)
+        db.DATABASE_SESSION = db.connect_to_database(cfg.database_ip, cfg.database_port)
+        # db.DATABASE_SESSION = db.connect_to_database(SE_NODE.known_coordinators[first_key]['address'], cfg.database_port)
     except Exception as e:
         logger_console.warning(f"Could not connect to log server {SE_NODE.known_coordinators[first_key]['address']}:{cfg.logs_server_address[1]}: {e}")
-        log_socket_handler = None
+        # logger_console.removeHandler(log_socket_handler)
+        # log_socket_handler = None
 
     
     # remvoe all configureation from bmv2, start fresh
@@ -184,7 +189,7 @@ def initialize_program():
 
     # attach the backbone interface to the bmv2
     bmv2.send_cli_command_to_bmv2(cli_command=f"port_remove {cfg.swarm_backbone_switch_port}", instance=THIS_AP)
-    bmv2.send_cli_command_to_bmv2(cli_command=f"port_add {cfg.default_backbone_device} {cfg.swarm_backbone_switch_port}", instance=THIS_AP)
+    bmv2.send_cli_command_to_bmv2(cli_command=f"port_add {cfg.ap_backbone_device} {cfg.swarm_backbone_switch_port}", instance=THIS_AP)
     
     coordinator_vmac = utils.int_to_mac( int( ipaddress.ip_address(cfg.coordinator_vip)) )
     #print(f'Coordinator MAC { coordinator_vmac}')
@@ -631,7 +636,7 @@ def main():
     initialize_program()
     monitor_stations()
 
-def run(uuid):
+def run(uuid, no_discovery):
     global SELF_UUID, SE_NODE
     SELF_UUID = uuid
     logger_console.info(f"\n--{SELF_UUID} Starting")
@@ -640,7 +645,17 @@ def run(uuid):
         node_uuid = SELF_UUID,
         node_sebackbone_ip=se_bb_ip, 
         group_id=cfg.group_id)
-    SE_NODE.start()        
+    if no_discovery:
+        SE_NODE.known_coordinators['CO01'] = { 
+            'name': 'CO01', 
+            'type': 'CO', 
+            'address': cfg.coordinator_vip,
+            'last_update': time.monotonic(),
+            'sebackbone_ip': cfg.coordinator_vip
+        }
+    else:
+         SE_NODE.start()       
+    
     initialize_program()
     monitor_stations()
             

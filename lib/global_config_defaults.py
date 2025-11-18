@@ -29,6 +29,8 @@ swarm_backbone_switch_port = 510
 ## we created an overlay network as attaching the eth0 directly to bmv2 leads to performance degredation
 ## due to the high amount of background traffic genereted from the university network
 default_backbone_device = 'smartedge-bb'
+ap_backbone_device = 'vet2co'
+co_backbone_device = 'vet2ap'
 
 ap_wait_time_for_disconnected_station_in_seconds= 5
 

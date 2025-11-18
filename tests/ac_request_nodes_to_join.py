@@ -53,21 +53,30 @@ if heartbeat_enabled:
 
 # Serialize
 str_message = json.dumps(message)
-
+print("message is: ")
+print(str_message)
 # === STEP 3: Send message to Coordinator over TCP ===
-host = '0.0.0.0'
+host = "10.1.255.254"
 port = 9999
 
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((host, port))
-        s.sendall(str_message.encode())
-        data = s.recv(1024).decode()
-        data_json = json.loads(data)
-        print("✅ Join request accepted. Response:")
-        print(json.dumps(data_json, indent=2))
-        sys.exit(0)
+        encoded_message = str_message.encode()
+        print(f"encoded message: ", encoded_message)
+        s.sendall(encoded_message)
+        try:
+            data = s.recv(1024)
+            if not data:
+                print("No Data Received")
+            else: 
+                data_json = json.loads(data)
+                print("✅ Join request accepted. Response:")
+                print(json.dumps(data_json, indent=2))
+        except Exception as e:
+            print(e)
+        # sys.exit(0)
 
 except Exception as e:
     print(f"❌ Socket error: {e}")
-    sys.exit(1)
+    # sys.exit(1)

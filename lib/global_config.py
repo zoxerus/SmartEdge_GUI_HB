@@ -5,7 +5,7 @@ group_id = "se_backbone_swarm1"
 
 # TODO: remove the need for this.
 # currently only the IP of the coordinator needs to be set here
-COORDINATOR_IP = '192.168.137.106'
+# COORDINATOR_IP = '192.168.137.106'
 
 # this subnet is used to connect APs for forwarding swarm traffic only
 backbone_subnet='192.168.100.0'  #smartedge-bb
@@ -14,12 +14,17 @@ backbone_subnetmask='/24'
 SELF_UUID = 1
 # SELF_TYPE = "CO"
 
+ap_colocated_s1_vip = "10.1.255.240"
+
 # database_hostname = COORDINATOR_IP
-logs_server_address = (COORDINATOR_IP, 5000)
+logs_server_address = ('10.1.255.240', 5000)
 
 # these are the L3 port numbers on which the databases listen
 REDIS_PORT = 6379
 CASSANDRA_PORT = 9042
+
+database_ip = ap_colocated_s1_vip
+
 
 # This is the number of the bmv2 port that is attached to the backbone network
 # the backbone network is the network that connects the APs to the coordinator
@@ -28,7 +33,9 @@ swarm_backbone_switch_port = 510
 ## This is the interface at which the traffic is forwarded between the APs and the coordinator
 ## we created an overlay network as attaching the eth0 directly to bmv2 leads to performance degredation
 ## due to the high amount of background traffic genereted from the university network
-default_backbone_device = 'smartedge-bb'
+
+ap_backbone_device = 'vet2co'
+co_backbone_device = 'vet2ap'
 
 ap_wait_time_for_disconnected_station_in_seconds= 5
 
@@ -52,7 +59,7 @@ database_port = CASSANDRA_PORT
 
 coordinator_vip='10.1.255.254'        # swarm virtual ip
 COORDINATOR_S0_IP='10.0.255.254'
-coordinator_phyip='192.168.100.254' # physical ip of device 
+coordinator_phyip= coordinator_vip #'192.168.254.254' # physical ip of device 
 
 # this is a tcp port number used to reach the coordinator from the swarm nodes
 coordinator_tcp_port = 29997
@@ -60,6 +67,7 @@ coordinator_tcp_port = 29997
 # this is a tcp port number used to reach the swarm node manager from the access points
 # in order to send the swarm config
 node_manager_tcp_port = 29997
+
 
 
 # list of access points in the network, used to propagate configuration changes

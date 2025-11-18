@@ -234,8 +234,11 @@ def install_config_no_update_vxlan(config_data):
     commands = [
         f'ip link set veth1 address {swarm_veth1_vmac}',
         f'ifconfig veth1 {swarm_veth1_vip} netmask 255.255.0.0 up',
+        f'arp -s 10.0.255.254 00:00:0a:01:ff:f000',
         f'ip link set veth0 up',
         f'ip link set dev veth1 mtu 1400',
+        "sudo ip link set dev veth0 xdp off",
+        "sudo ip link set dev veth1 xdp off",
         f'ethtool --offload veth1 rx off tx off'
     ]
     for command in commands:
@@ -270,6 +273,8 @@ def install_swarmNode_config(swarmNode_config):
         f'ifconfig veth1 {swarm_veth1_vip} netmask 255.255.0.0 up',
         f'ip link set veth0 up',
         f'ip link set dev veth1 mtu 1400',
+        "sudo ip link set dev veth0 xdp off",
+        "sudo ip link set dev veth1 xdp off",
         f'ethtool --offload veth1 rx off tx off'
     ]
     for command in commands:

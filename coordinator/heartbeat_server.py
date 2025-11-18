@@ -19,7 +19,7 @@ BIND_IP           = os.environ.get("SE_CO_BIND_IP", "0.0.0.0")   # e.g., "10.1.2
 TCP_PORT          = int(os.environ.get("SE_CO_PUBKEY_TCP_PORT", "5007"))
 UDP_PORT          = int(os.environ.get("SE_CO_HB_UDP_PORT", "5008"))
 #HEARTBEAT_TIMEOUT = int(os.environ.get("SE_CO_HB_TIMEOUT", "7"))  # seconds
-LOGFILE           = os.environ.get("SE_CO_LOG", "/home/Coordinator/smartedge_GUI/coordinator/logs/coordinator_hb_server.log")
+LOGFILE           = os.environ.get("SE_CO_LOG", "./logs/coordinator_hb_server.log")
 STORE_DIR         = os.environ.get("SE_CO_HB_STORE", "./hb_store")  # optional: where to stash any files if needed
 
 # Allow override via CLI argument: python3 heartbeat_server.py <lost_limit>
