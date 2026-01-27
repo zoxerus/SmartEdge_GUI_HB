@@ -55,7 +55,7 @@ Then install the required python3 modules
 on the coordinator node run the log collector
 ```
 cd ./GUI/backend
-../../.venv/bin/python /coordinator_log_server.py
+../../.venv/bin/python ./coordinator_log_server.py
 ```
 
 run the cassandra database 
