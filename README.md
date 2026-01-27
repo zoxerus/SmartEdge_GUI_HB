@@ -12,8 +12,8 @@ python3 -m venv .venv
 
 Then install the required python3 modules
 ```
-.venv/bin/pip -r ./requirements/ap.txt
-.venv/bin/pip -r ./requirements/co.txt
+.venv/bin/pip install -r ./requirements/ap.txt
+.venv/bin/pip install -r ./requirements/co.txt
 ```
 
 You might as well need to install docker engine for the later steps  
