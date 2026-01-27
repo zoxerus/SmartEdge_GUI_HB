@@ -3,7 +3,7 @@
 For this run from the main directory
 Then make sure to install the following packages
 ```
-sudo apt install python3-venv python3-dev net-tools screen
+sudo apt install python3-venv python3-dev net-tools screen ethtool
 ```
 Now create a virtual environment running the command in the main directory of smartedge
 ```
