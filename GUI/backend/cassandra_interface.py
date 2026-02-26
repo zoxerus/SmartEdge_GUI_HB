@@ -18,6 +18,15 @@ CASSANDRA_HOST = "0.0.0.0"
 KEYSPACE = "ks_swarm"
 TABLES = ["art", "swarm_table"]
 
+cluster = None
+session = None
+
+def connect_to_cassandra_db():
+    global cluster, session
+    cluster = Cluster(contact_points=[CASSANDRA_HOST])
+    session = cluster.connect(KEYSPACE)
+    session.row_factory = dict_factory
+
 def clean_data(obj):
     if isinstance(obj, dict):
         return {k: clean_data(v) for k, v in obj.items()}
@@ -30,16 +39,13 @@ def clean_data(obj):
 
 
 async def fetch_and_broadcast_data(target_table: str | None = None):
+    global session
     """
     Fetch data from Cassandra and broadcast via WebSocket.
     Always broadcasts both 'art' and 'swarm_table' to ensure GUI stays in sync.
     If Cassandra ever has multiple swarm tables, it will include them automatically.
     """
     try:
-        cluster = Cluster(contact_points=[CASSANDRA_HOST])
-        session = cluster.connect(KEYSPACE)
-        session.row_factory = dict_factory
-
         # Always include both main tables; dynamically add other swarm tables if any
         tables = ["art", "swarm_table"]
 

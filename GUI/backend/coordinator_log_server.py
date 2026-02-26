@@ -24,7 +24,7 @@ from cassandra.query import dict_factory
 import heartbeat_api
 import signal
 from fastapi import Body
-from cassandra_interface import fetch_and_broadcast_data
+from cassandra_interface import fetch_and_broadcast_data, connect_to_cassandra_db
 
 
 
@@ -598,6 +598,7 @@ async def start_heartbeat_server(data: dict):
 # === Main startup ===
 async def main():
     print("[System] Starting Coordinator Log Server...")
+    connect_to_cassandra_db()
     asyncio.create_task(start_tcp_server())
     # asyncio.create_task(periodic_db_fetch())
     

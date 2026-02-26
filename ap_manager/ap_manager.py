@@ -637,7 +637,7 @@ def main():
     initialize_program()
     monitor_stations()
 
-def run(uuid, no_discovery):
+def run(uuid, co_uuid = None, no_discovery = True):
     global SELF_UUID, SE_NODE
     SELF_UUID = uuid
     logger_console.info(f"\n--{SELF_UUID} Starting")
@@ -664,8 +664,8 @@ def run(uuid, no_discovery):
         switch['cli_instance'] = cli_instance
         SE_NODE.known_aps[SELF_UUID] =  switch 
         
-        SE_NODE.known_coordinators['CO000001'] = { 
-            'name': 'CO000001', 
+        SE_NODE.known_coordinators['co_uuid'] = { 
+            'name': 'co_uuid', 
             'type': 'CO', 
             'address': cfg.coordinator_vip,
             'last_update': time.monotonic(),

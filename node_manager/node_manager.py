@@ -20,6 +20,7 @@ import lib.global_config as cfg
 from lib.helper_functions import *
 import lib.global_constants as cts
 import lib.helper_functions as utils
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 STRs = cts.String_Constants 
@@ -55,6 +56,13 @@ q_to_mgr = queue.Queue()
 gb_swarmNode_config = {}
 
 last_request_id = 0
+
+xml_schema_fastRTPS = "http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles"
+ET.register_namespace('', xml_schema_fastRTPS)
+
+xml_tree_ros2_dds_profile = ET.parse(cfg.ros2_dds_file)
+
+xml_root_ros2_dds_profile = xml_tree_ros2_dds_profile.getroot()
 
 # --- Heartbeat service management ---
 hb_process = None
@@ -247,7 +255,15 @@ def install_config_no_update_vxlan(config_data):
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if process_ret.stderr:
             logger.error(f"Error executing command {command}: \n{process_ret.stderr}")
-
+            
+    xml_tag_ros2_interface_address = xml_root_ros2_dds_profile.find('.//{*}address')
+    if xml_tag_ros2_interface_address is not None:
+        xml_tag_ros2_interface_address.text = swarm_veth1_vip
+    else:
+        logger.error("Could not find or update the address tag.")
+    xml_tree_ros2_dds_profile.write(cfg.ros2_dds_file, encoding='UTF-8', xml_declaration=True)
+    
+    
     logger.info(f"[VXLAN-CONFIG] VETH1 configured: IP={swarm_veth1_vip}, MAC={swarm_veth1_vmac}, "
                 f"MTU=1400, default route via veth1")
 
@@ -283,7 +299,14 @@ def install_swarmNode_config(swarmNode_config):
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if process_ret.stderr:
             logger.error(f"Error executing command {command}: \n{process_ret.stderr}")
-
+    
+    xml_tag_ros2_interface_address = xml_root_ros2_dds_profile.find('.//{*}address')
+    if xml_tag_ros2_interface_address is not None:
+        xml_tag_ros2_interface_address.text = swarm_veth1_vip
+    else:
+        logger.error("Could not find or update the address tag.")
+    xml_tree_ros2_dds_profile.write(cfg.ros2_dds_file, encoding='UTF-8', xml_declaration=True)
+    
     # Retrieve link indices for P4 pipeline
     # get_if1_index_command = 'cat /sys/class/net/veth0/ifindex'
     # get_if2_index_command = 'cat /sys/class/net/se_vxlan/ifindex'

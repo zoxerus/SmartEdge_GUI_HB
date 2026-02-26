@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+
+    <transport_descriptors>
+      <transport_descriptor>
+        <transport_id>udp_custom_transport</transport_id>
+        <type>UDPv4</type>
+        <sendBufferSize>65500</sendBufferSize>
+        <receiveBufferSize>65500</receiveBufferSize>
+        <maxMessageSize>1450</maxMessageSize>
+        <non_blocking_send>true</non_blocking_send>
+        <interfaceWhiteList>
+
+          <address>10.1.0.11</address>
+        </interfaceWhiteList>
+
+      </transport_descriptor>
+    </transport_descriptors>
+
+    <participant profile_name="ros2_dds_profile" is_default_profile="true">
+      <domainId>42</domainId>
+      <rtps>
+        <name>n5</name>
+        <useBuiltinTransports>false</useBuiltinTransports>
+        <userTransports>
+          <transport_id>udp_custom_transport</transport_id>
+        </userTransports>
+      </rtps>
+    </participant>
+
+  </profiles>
+</dds>

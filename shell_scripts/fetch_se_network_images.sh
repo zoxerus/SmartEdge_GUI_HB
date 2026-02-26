@@ -9,7 +9,7 @@ if [ -f "$image_filename" ]; then
 fi
 
 echo "$image_filename was not found in current directory, fetching ..."
-wget -O $image_filename https://tinyurl.com/54ntajmw
+wget -O $image_filename https://tinyurl.com/se-bmv2
 
 echo "Calculating MD5 checkSum for file $image_filename ..."
 calculated_md5=$(md5sum se_network.tar | awk '{print $1}')

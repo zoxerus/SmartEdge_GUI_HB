@@ -1,4 +1,9 @@
 # This is the global config file, all variables can be configured from here
+from pathlib import Path
+current_file_path = Path(__file__).resolve()
+current_directory = current_file_path.parent
+smartedge_top_directory = current_directory.parent
+
 
 # this ID is used for the automatic discovery of the backbone node (Coordinators and Access Points)
 group_id = "se_backbone_swarm1"  
@@ -11,13 +16,15 @@ group_id = "se_backbone_swarm1"
 backbone_subnet='192.168.100.0'  #smartedge-bb
 backbone_subnetmask='/24'
 
+ros2_dds_file = smartedge_top_directory.as_posix() + "/node_manager/ros2_dds_profile.xml"
+
 SELF_UUID = 1
 # SELF_TYPE = "CO"
 
-ap_colocated_s1_vip = "10.1.255.240"
+ap_colocated_s1_vip = "10.1.255.253"
 
 # database_hostname = COORDINATOR_IP
-logs_server_address = ('10.1.255.240', 5000)
+logs_server_address = ('10.1.255.253', 5000)
 
 # these are the L3 port numbers on which the databases listen
 REDIS_PORT = 6379

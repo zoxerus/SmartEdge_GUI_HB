@@ -90,7 +90,7 @@ SELF_UUID = "null"
 
 logger = logging.getLogger()
 
-log_socket_handler = SocketStreamHandler( '10.1.255.240', cfg.logs_server_address[1] )
+log_socket_handler = SocketStreamHandler( '10.1.255.253', cfg.logs_server_address[1] )
 log_info_formatter =  logging.Formatter("%(name)s %(asctime)s [%(levelname)s]:\n%(message)s\n")
 log_socket_handler.setFormatter(log_info_formatter)
 log_socket_handler.setLevel(logging.INFO)
@@ -571,7 +571,7 @@ def main():
     ap_thread.start()
     ac_thread.start()
     
-def run(uuid, no_discovery):
+def run(uuid, uuid_ap = None, no_discovery = True):
     global SELF_UUID, SE_NODE
     SELF_UUID = uuid
     # atexit.register(exit_handler)
@@ -579,22 +579,22 @@ def run(uuid, no_discovery):
     SE_NODE = se_net.Node(node_type=SELF_TYPE, node_uuid=SELF_UUID, 
                       node_sebackbone_ip=se_bb_ip, group_id=cfg.group_id)
     if no_discovery:
-        SE_NODE.known_aps['AP000002'] = { 
-            'name': 'AP000002', 
+        SE_NODE.known_aps[uuid_ap] = { 
+            'name': uuid_ap, 
             'type': 'AP', 
-            'address': '10.1.255.240',
+            'address': '10.1.255.253',
             'last_update': time.monotonic(),
-            'sebackbone_ip': '10.1.255.240'
+            'sebackbone_ip': '10.1.255.253'
         }
-        switch = {  'name': "AP000002", 
+        switch = {  'name': uuid_ap, 
             'type': 'AP', 
             'last_update': time.monotonic(),
-            'address': '10.1.255.240',
-            'sebackbone_ip': '10.1.255.240'
+            'address': '10.1.255.253',
+            'sebackbone_ip': '10.1.255.253'
             }
-        cli_instance = bmv2.connect_to_switch('10.1.255.240')
+        cli_instance = bmv2.connect_to_switch('10.1.255.253')
         switch['cli_instance'] = cli_instance
-        SE_NODE.known_aps['AP000002'] =  switch 
+        SE_NODE.known_aps[uuid_ap] =  switch 
     else: 
         SE_NODE.start()
     node_thread = threading.Thread(target=node_handler, args=(HOST, NODE_PORT))

@@ -53,11 +53,11 @@ def init_hotspot():
     else:
         subprocess.run("nmcli con up SmartEdgeHotspot".split())
 
-def init_colocated(co_uuid):
+def init_colocated(co_uuid, ap_uuid):
     co_vip_s0 = "10.0.255.254"
     co_vip_s1 = "10.1.255.254"
-    ap_vip_s1 = "10.1.255.240"
-    ap_ip_p2p = "192.168.254.253/30"
+    ap_vip_s1 = "10.1.255.253"
+    # ap_ip_p2p = "192.168.254.253/30"
     ap_mac = utils.int_to_mac(int(ipaddress.ip_address(ap_vip_s1)) )
     co_mac = utils.int_to_mac(int(ipaddress.ip_address(co_vip_s1)) )
     commands = ["ip link add vet2ap type veth peer name vet2co",
@@ -69,16 +69,18 @@ def init_colocated(co_uuid):
                 f"ip netns exec sens ip addr add {co_vip_s0}/16 dev vet2ap",
                 f"ip netns exec sens ip addr add {co_vip_s1}/16 dev vet2ap",
                 f"ip netns exec sens ip link set vet2ap address {co_mac}",
+                # f"ip netns exec sens ip link set vet2ap mtu 2000",
                 "ip netns exec sens ip link set vet2ap up",
                 "ip netns exec sens ethtool --offload vet2ap rx off tx off",
                 "ip addr flush vet2co",
                 f"ip link set vet2co address {ap_mac}",
-                f"ip addr add {ap_vip_s1}/16 dev vet2co",
+                f"ip addr add {ap_vip_s1}/30 dev vet2co",
+                # "ip link set vet2co mtu 2000",
                 "ip link set vet2co up",
                 "ethtool --offload vet2co rx off tx off",
                 # "ip netns exec sens ip route add default dev vet2ap",
                 "ip netns exec sens screen -X -S SE_CO quit",
-                f"ip netns exec sens screen -dmS SE_CO ./run.py -t CO --uuid-self {co_uuid} --no-discovery "]
+                f"ip netns exec sens screen -dmS SE_CO ./run.py -t CO --uuid-self {co_uuid} --uuid-ap {ap_uuid} --no-discovery "]
     for command in commands:
         subprocess.run(command.split())        
 
@@ -108,6 +110,7 @@ def init_wlan():
         if calculated_wlan_mac != current_wlan_mac:
             commands = [f"ip link set {WLAN_IF} down", 
                         f"ip link set {WLAN_IF} address {calculated_wlan_mac}",
+                        f"ip link set {WLAN_IF} mtu 2000",
                         f"ip link set {WLAN_IF} up"]
             for command in commands:
                 subprocess.run(command.split())
@@ -191,6 +194,7 @@ def main():
     if os.geteuid() != 0:
         print("\n ***ERROR: This script must be run with sudo or as root.")
         sys.exit(1)
+    # check for virtual environment
     if is_venv():
         print("Running Inside virtual environment")
     else:
@@ -216,7 +220,7 @@ def main():
         # init_backbone()
         init_hotspot()
         import ap_manager.ap_manager as AP
-        AP.run(SELF_UUID_STR, args.no_discovery)
+        AP.run(uuid = SELF_UUID_STR, no_discovery = args.no_discovery)
         pass
     elif args.type.upper() == 'SN':
         import node_manager.node_manager as SN
@@ -226,17 +230,20 @@ def main():
     elif args.type.upper() == 'CO':
         # init_backbone()
         import coordinator.coordinator as CO
-        CO.run(SELF_UUID_STR, args.no_discovery)
+        AP_UUID_STR = f"AP{args.uuid_ap:06d}"
+        CO.run(uuid = SELF_UUID_STR, uuid_ap = AP_UUID_STR, no_discovery= args.no_discovery)
         pass
     elif args.type.upper() == 'AC':
         if not ( args.uuid_ap and args.uuid_co):
             print("must supply args: --uuid-ap and --uuid-co")
             exit()
         AP_UUID_STR = f"AP{args.uuid_ap:06d}"
-        init_colocated(co_uuid = args.uuid_ap)
+        CO_UUID_STR = f"CO{args.uuid_co:06d}"
+        
+        init_colocated(co_uuid = args.uuid_co, ap_uuid = args.uuid_ap)
         init_hotspot()
         import ap_manager.ap_manager as AP
-        AP.run(AP_UUID_STR, no_discovery = True )
+        AP.run(AP_UUID_STR, CO_UUID_STR, no_discovery = True )
     
     exit()
 
